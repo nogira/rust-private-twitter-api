@@ -1,9 +1,8 @@
-mod types;
+pub mod types;
 use types::{QueryTweet, TweetMedia, TweetURLs, Quote};
 
-use std::{collections::HashMap};
-// use std::sync::Mutex;
-use parking_lot::Mutex;
+use std::collections::HashMap;
+use std::sync::Mutex;
 use serde_json::Value;
 use regex::Regex;
 
@@ -65,7 +64,7 @@ pub fn query_fetch(query: &str) -> Value {
   let url = format!("{}{}", PRIVATE_API_BASE, "2/search/adaptive.json?");
   let url = reqwest::Url::parse_with_params(&url, &parameters).unwrap();
   
-  let mut guest_token = GUEST_TOKEN.lock();
+  let mut guest_token = GUEST_TOKEN.lock().unwrap();
   if (*guest_token).is_empty() {
     *guest_token = new_guest_token();
   }
@@ -91,6 +90,7 @@ pub fn query_fetch(query: &str) -> Value {
   json["globalObjects"].clone()
 }
 
+/// get tweets from twitter search query
 pub fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
 
   let fetch_json = query_fetch(query);
@@ -123,6 +123,7 @@ pub fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
         let mut media: Vec<TweetMedia> = Vec::new();
 
         for item in media_json {
+          println!("{:?}", item);
           let shortened_img_url = item["url"].as_str().unwrap().to_string();
           let full_img_url = item["media_url_https"].as_str().unwrap().to_string();
           let kind = item["type"].as_str().unwrap().to_string();
@@ -144,6 +145,11 @@ pub fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
               }
             }
             video_url = Some(highest_bitrate_mp4_url.to_string());
+          } else if kind == "animated_gif" {
+            // only one entry in the variants array for gifs
+            video_url = Some(
+              item["video_info"]["variants"][0]["url"].as_str().unwrap().to_string()
+            );
           }
           let media_item = TweetMedia {
             shortened_img_url,

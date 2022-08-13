@@ -20,7 +20,7 @@ pub struct TweetMedia {
   pub shortened_img_url: String,
   /// the original image url
   pub full_img_url: String,
-  /// photo or video
+  /// `photo` or `video` or `animated_gif`
   pub kind: String,
   pub video_url: Option<String>,
 }
