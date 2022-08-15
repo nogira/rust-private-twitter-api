@@ -17,11 +17,12 @@ static GUEST_TOKEN: Mutex<String> = Mutex::new(String::new());
 pub async fn new_guest_token() -> String {
   let url = "https://api.twitter.com/1.1/guest/activate.json";
   let client = reqwest::Client::new();
-  let token = client.post(url)
+  let text = client.post(url)
     .header("authorization", AUTHORIZATION)
     .send().await.unwrap()
-    .json::<Value>().await.unwrap()
-    ["guest_token"].as_str().unwrap().to_string();
+    .text().await.unwrap();
+  let json: Value = serde_json::from_str(&text).unwrap();
+  let token = json["guest_token"].as_str().unwrap().to_string();
 
   token
 }
@@ -84,9 +85,11 @@ pub async fn query_fetch(query: &str) -> Value {
     let client = reqwest::Client::new();
     let req = client.get(url)
       .headers(headers);
-    let json: Value = req.try_clone().unwrap()
+    let text = req.try_clone().unwrap()
       .send().await.unwrap()
-      .json::<Value>().await.unwrap();
+      .text().await.unwrap();
+    let json: Value = serde_json::from_str(&text).unwrap();
+
     json
   }
 
@@ -365,7 +368,8 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
   parsed_tweets
 }
 
-#[test]
-fn test() {
-  println!("{:?}", query_to_tweets("from:elonmusk"));
-}
+
+// #[tokio::test]
+// async fn test() {
+//   println!("{:?}", query_to_tweets("from:elonmusk").await);
+// }
