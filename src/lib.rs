@@ -10,23 +10,24 @@ use reqwest::Url;
 const AUTHORIZATION: &str = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 const PRIVATE_API_BASE: &str = "https://twitter.com/i/api/";
 
+// TODO: token is a string of numbers, so better to store as integer (?)
 static GUEST_TOKEN: Mutex<String> = Mutex::new(String::new());
 
 /// get "x-guest-token" for subsequent requests
-pub fn new_guest_token() -> String {
+pub async fn new_guest_token() -> String {
   let url = "https://api.twitter.com/1.1/guest/activate.json";
-  let client = reqwest::blocking::Client::new();
+  let client = reqwest::Client::new();
   let token = client.post(url)
     .header("authorization", AUTHORIZATION)
-    .send().unwrap()
-    .json::<Value>().unwrap()
+    .send().await.unwrap()
+    .json::<Value>().await.unwrap()
     ["guest_token"].as_str().unwrap().to_string();
 
   token
 }
 
 /// fetch the raw json result of a twitter search query
-pub fn query_fetch(query: &str) -> Value {
+pub async fn query_fetch(query: &str) -> Value {
 
   let parameters = HashMap::from([
     ("include_profile_interstitial_type", "1"),
@@ -65,41 +66,45 @@ pub fn query_fetch(query: &str) -> Value {
   let url = format!("{}{}", PRIVATE_API_BASE, "2/search/adaptive.json?");
   let url = reqwest::Url::parse_with_params(&url, &parameters).unwrap();
   
-  let mut guest_token_mutex = GUEST_TOKEN.lock().unwrap();
-  if (*guest_token_mutex).is_empty() {
-    *guest_token_mutex = new_guest_token();
-  }
-  let mut guest_token = guest_token_mutex.clone();
-  std::mem::drop(guest_token_mutex);
+  // let mut guest_token_mutex = GUEST_TOKEN.lock().unwrap();
+  // if (*guest_token_mutex).is_empty() {
+  //   *guest_token_mutex = new_guest_token().await;
+  // }
+  // let mut guest_token = guest_token_mutex.clone();
+  // std::mem::drop(guest_token_mutex);
 
-  fn post_req(url: Url, guest_token: &str) -> Value { 
+
+  let guest_token = new_guest_token().await;
+
+  async fn post_req(url: Url, guest_token: &str) -> Value { 
     let mut headers = reqwest::header::HeaderMap::new();
     headers.append("authorization", AUTHORIZATION.parse().unwrap());
     headers.append("x-guest-token",  guest_token.parse().unwrap());
-    let client = reqwest::blocking::Client::new();
+
+    let client = reqwest::Client::new();
     let req = client.get(url)
       .headers(headers);
     let json: Value = req.try_clone().unwrap()
-      .send().unwrap()
-      .json::<Value>().unwrap();
+      .send().await.unwrap()
+      .json::<Value>().await.unwrap();
     json
   }
 
-  let mut json = post_req(url.clone(), &guest_token);
-  // if gave error, re-run the request with a new guest token
-  if json["errors"].as_str().is_some() {
-    guest_token = new_guest_token();
-    *GUEST_TOKEN.lock().unwrap() = guest_token.clone();
-    json = post_req(url.clone(), &guest_token);
-  }
+  let mut json = post_req(url.clone(), &guest_token).await;
+  // // if gave error, re-run the request with a new guest token
+  // if json["errors"].as_str().is_some() {
+  //   guest_token = new_guest_token().await;
+  //   *GUEST_TOKEN.lock().unwrap() = guest_token.clone();
+  //   json = post_req(url.clone(), &guest_token).await;
+  // }
 
   json["globalObjects"].clone()
 }
 
 /// get tweets from twitter search query
-pub fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
+pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
 
-  let fetch_json = query_fetch(query);
+  let fetch_json = query_fetch(query).await;
 
   // data is separated into users and tweets, so to attach username to tweet, 
   // need to get user info first
