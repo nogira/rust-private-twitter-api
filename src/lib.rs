@@ -2,9 +2,10 @@ pub mod types;
 use types::{QueryTweet, TweetMedia, TweetURLs, Quote};
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 use serde_json::Value;
 use regex::Regex;
+use reqwest::Url;
 
 const AUTHORIZATION: &str = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 const PRIVATE_API_BASE: &str = "https://twitter.com/i/api/";
@@ -64,27 +65,32 @@ pub fn query_fetch(query: &str) -> Value {
   let url = format!("{}{}", PRIVATE_API_BASE, "2/search/adaptive.json?");
   let url = reqwest::Url::parse_with_params(&url, &parameters).unwrap();
   
-  let mut guest_token = GUEST_TOKEN.lock().unwrap();
-  if (*guest_token).is_empty() {
-    *guest_token = new_guest_token();
+  let mut guest_token_mutex = GUEST_TOKEN.lock().unwrap();
+  if (*guest_token_mutex).is_empty() {
+    *guest_token_mutex = new_guest_token();
   }
+  let mut guest_token = guest_token_mutex.clone();
+  std::mem::drop(guest_token_mutex);
 
-  let mut headers = reqwest::header::HeaderMap::new();
-  headers.append("authorization", AUTHORIZATION.parse().unwrap());
-  headers.append("x-guest-token",  (*guest_token).parse().unwrap());
-  let client = reqwest::blocking::Client::new();
-  let req = client.get(url)
-    .headers(headers);
-
-  let mut json: Value = req.try_clone().unwrap()
-    .send().unwrap()
-    .json::<Value>().unwrap();
-  // if gave error, re-run the request with a new guest token
-  if json["errors"].as_str().is_some() {
-    *guest_token = new_guest_token();
-    json = req.try_clone().unwrap()
+  fn post_req(url: Url, guest_token: &str) -> Value { 
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.append("authorization", AUTHORIZATION.parse().unwrap());
+    headers.append("x-guest-token",  guest_token.parse().unwrap());
+    let client = reqwest::blocking::Client::new();
+    let req = client.get(url)
+      .headers(headers);
+    let json: Value = req.try_clone().unwrap()
       .send().unwrap()
       .json::<Value>().unwrap();
+    json
+  }
+
+  let mut json = post_req(url.clone(), &guest_token);
+  // if gave error, re-run the request with a new guest token
+  if json["errors"].as_str().is_some() {
+    guest_token = new_guest_token();
+    *GUEST_TOKEN.lock().unwrap() = guest_token.clone();
+    json = post_req(url.clone(), &guest_token);
   }
 
   json["globalObjects"].clone()
@@ -123,7 +129,6 @@ pub fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
         let mut media: Vec<TweetMedia> = Vec::new();
 
         for item in media_json {
-          println!("{:?}", item);
           let shortened_img_url = item["url"].as_str().unwrap().to_string();
           let full_img_url = item["media_url_https"].as_str().unwrap().to_string();
           let kind = item["type"].as_str().unwrap().to_string();
