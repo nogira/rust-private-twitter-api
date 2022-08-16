@@ -2,16 +2,20 @@ pub mod types;
 use types::{QueryTweet, TweetMedia, TweetURLs, Quote};
 
 use std::collections::HashMap;
-use std::sync::{Mutex, Arc};
+use tokio::sync::Mutex;
+use once_cell::sync::Lazy;
 use serde_json::Value;
 use regex::Regex;
 use reqwest::Url;
+
 
 const AUTHORIZATION: &str = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 const PRIVATE_API_BASE: &str = "https://twitter.com/i/api/";
 
 // TODO: token is a string of numbers, so better to store as integer (?)
-static GUEST_TOKEN: Mutex<String> = Mutex::new(String::new());
+
+
+static GUEST_TOKEN: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 
 /// get "x-guest-token" for subsequent requests
 pub async fn new_guest_token() -> String {
@@ -67,15 +71,15 @@ pub async fn query_fetch(query: &str) -> Value {
   let url = format!("{}{}", PRIVATE_API_BASE, "2/search/adaptive.json?");
   let url = reqwest::Url::parse_with_params(&url, &parameters).unwrap();
   
-  // let mut guest_token_mutex = GUEST_TOKEN.lock().unwrap();
-  // if (*guest_token_mutex).is_empty() {
-  //   *guest_token_mutex = new_guest_token().await;
-  // }
-  // let mut guest_token = guest_token_mutex.clone();
-  // std::mem::drop(guest_token_mutex);
+  let mut guest_token_mutex = GUEST_TOKEN.lock().await;
+  if (*guest_token_mutex).is_empty() {
+    *guest_token_mutex = new_guest_token().await;
+  }
+  let mut guest_token = guest_token_mutex.clone();
+  std::mem::drop(guest_token_mutex);
 
 
-  let guest_token = new_guest_token().await;
+  // let guest_token = new_guest_token().await;
 
   async fn post_req(url: Url, guest_token: &str) -> Value { 
     let mut headers = reqwest::header::HeaderMap::new();
@@ -94,12 +98,12 @@ pub async fn query_fetch(query: &str) -> Value {
   }
 
   let mut json = post_req(url.clone(), &guest_token).await;
-  // // if gave error, re-run the request with a new guest token
-  // if json["errors"].as_str().is_some() {
-  //   guest_token = new_guest_token().await;
-  //   *GUEST_TOKEN.lock().unwrap() = guest_token.clone();
-  //   json = post_req(url.clone(), &guest_token).await;
-  // }
+  // if gave error, re-run the request with a new guest token
+  if json["errors"].as_str().is_some() {
+    guest_token = new_guest_token().await;
+    *GUEST_TOKEN.lock().await = guest_token.clone();
+    json = post_req(url.clone(), &guest_token).await;
+  }
 
   json["globalObjects"].clone()
 }
@@ -369,7 +373,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
 }
 
 
-// #[tokio::test]
-// async fn test() {
-//   println!("{:?}", query_to_tweets("from:elonmusk").await);
-// }
+#[tokio::test]
+async fn test() {
+  println!("{:?}", query_to_tweets("from:elonmusk").await);
+}
