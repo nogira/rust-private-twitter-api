@@ -11,7 +11,8 @@ use serde_json::Value;
 /// instead
 pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
   let id_from_input_url = url.split("/").collect::<Vec<&str>>()[5];
-  let tweet_groups =  id_fetch(id_from_input_url, false).await;
+  let tweet_groups_json = id_fetch(id_from_input_url, false).await;
+  let tweet_groups = tweet_groups_json.as_array().unwrap();
   let mut all_parsed_tweets: Vec<Tweet> = Vec::new();
 
   // find out which tweet group contains the main tweet
@@ -104,9 +105,9 @@ pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
   all_parsed_tweets
 }
 
-fn get_main_tweet_index(tweet_groups: &Value, id_from_input_url: &str) -> usize {
+fn get_main_tweet_index(tweet_groups: &Vec<Value>, id_from_input_url: &str) -> usize {
   let mut i = 0;
-  for tweet_group in tweet_groups.as_array().unwrap().clone() {
+  for tweet_group in tweet_groups.clone() {
     let entry_id = tweet_group["entryId"].as_str().unwrap();
     // "tweet-1516856286738598375" -> "1516856286738598375"
     let id = &entry_id[6..];
@@ -258,4 +259,31 @@ fn parse_tweet_contents(tweet_contents_original: &Value) -> Option<Tweet> {
 }
 
 
+/* ----------------------- url_to_recommended_tweets ----------------------- */
 
+pub async fn url_to_recommended_tweets(url: &str) -> Vec<Tweet> {
+
+  let id_from_input_url = url.split("/").collect::<Vec<&str>>()[5];
+  let tweet_groups_json = id_fetch(&id_from_input_url, true).await;
+  let tweet_groups = tweet_groups_json.as_array().unwrap();
+  let mut all_parsed_tweets: Vec<Tweet> = Vec::new();
+
+  // all recommended tweets are in second-last tweetGroup item
+  let recommended_tweets = tweet_groups[&tweet_groups.len() - 2].get("content").and_then(|v| v.get("items")).and_then(|v| v.as_array()).unwrap();
+  for tweet in recommended_tweets {
+      let tweet_contents = &tweet["item"];
+      if let Some(parsed_tweet) = parse_tweet_contents(tweet_contents) {
+          all_parsed_tweets.push(parsed_tweet);
+      }
+  }
+  return all_parsed_tweets;
+}
+
+#[tokio::test]
+async fn recommended_tweets_test() {
+  println!("url_to_tweets()  //  thread, 1st-tweet");
+  let url = "https://twitter.com/epolynya/status/1513868637307691009";
+  let tweets = url_to_recommended_tweets(url).await;
+  // println!("{:?}", tweets);
+  assert!(tweets.len() > 10)
+}
