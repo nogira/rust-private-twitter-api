@@ -9,7 +9,6 @@ pub struct Tweet {
   pub media: Option<Vec<TweetMedia>>,
   pub urls: Option<Vec<TweetURLs>>,
   pub quote: Option<Quote>,
-  pub is_thread: Option<bool>,
   /// id of the first tweet in the thread this tweet is in
   pub thread_id: Option<String>,
 }
