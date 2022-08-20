@@ -105,12 +105,12 @@ pub async fn query_fetch(query: &str) -> Value {
   json
 }
 
-pub async fn id_fetch(tweet_id: &str, include_recommended_tweets: bool) -> Value {
+pub async fn id_fetch(tweet_id: &str, cursor: &str, include_recommended_tweets: bool) -> Option<Value> {
   let with_rux_injections = match include_recommended_tweets {
     true => "true",
     false => "false",
   };
-  let variables = HashMap::from([
+  let mut variables = HashMap::from([
     ("focalTweetId", tweet_id),
     ("with_rux_injections", with_rux_injections), // true = include recommended tweets
     ("includePromotedContent", "false"), // true = include promoted tweets (ads)
@@ -130,14 +130,34 @@ pub async fn id_fetch(tweet_id: &str, include_recommended_tweets: bool) -> Value
     ("__fs_responsive_web_uc_gql_enabled", "false"), // 🚨🚨🚨🚨🚨 idk????
     ("__fs_responsive_web_edit_tweet_api_enabled", "false"), // 🚨🚨🚨🚨🚨 idk????
   ]);
+  // add cursor variable if present
+  if cursor != "" {
+    variables.insert("cursor", cursor);
+  }
+  let features = HashMap::from([
+    ("standardized_nudges_misinfo", "false"),
+  ]);
   let parameters = HashMap::from([
     ("variables", serde_json::to_string(&variables).unwrap()),
+    ("features", serde_json::to_string(&features).unwrap()),
   ]);
   let url = format!("{}{}", PRIVATE_API_BASE, "graphql/L1DeQfPt7n3LtTvrBqkJ2g/TweetDetail?");
   let url = reqwest::Url::parse_with_params(&url, &parameters).unwrap();
 
   let tweets_json = private_api_get(url).await
-    ["data"]["threaded_conversation_with_injections_v2"]["instructions"][0]["entries"].clone();
+    .get("data")
+    .and_then(|v| v.get("threaded_conversation_with_injections_v2"))
+    .and_then(|v| v.get("instructions"))
+    .and_then(|v| v.get(0))
+    .and_then(|v| {
+      // no cursor uses "entries"
+      if let Some(v) = v.get("entries") {
+        Some(v)
+      // cursor uses "moduleItems"
+      } else {
+        v.get("moduleItems")
+      }
+  }).unwrap().clone();
 
-  tweets_json
+  Some(tweets_json)
 }
