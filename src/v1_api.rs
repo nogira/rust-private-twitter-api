@@ -19,7 +19,7 @@ pub async fn fetch_tweets_from_user(screen_name: &str, count: u64) -> Value {
   json
 }
 
-
+#[cfg(test)]
 #[tokio::test]
 async fn test_v1_api() {
   // println!("{:?}", fetch_tweets_from_user("elonmusk", 10).await);
