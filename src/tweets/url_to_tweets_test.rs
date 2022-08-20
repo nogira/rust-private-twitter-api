@@ -98,25 +98,25 @@ use super::url::url_to_tweets;
 
 // /* tweet thread so long it has a show more (if this one dies, just search "megathread") */
 
-#[tokio::test]
-async fn text_only_tweets_11() {
-  println!("url_to_tweets()  //  thread, 1st-tweet, only 1 show more");
-  let url = "https://twitter.com/art_science_x/status/1493630096648949760";
-  let tweets = url_to_tweets(url).await;
-  // println!("{:?}", tweets);
-  println!("LENGTH: {:?}", tweets.len());
-  println!("LAST TWEET: {:?}", tweets[tweets.len() - 1]);
-  assert_eq!(tweets.len(), 35);
-}
+// #[tokio::test]
+// async fn text_only_tweets_11() {
+//   println!("url_to_tweets()  //  thread, 1st-tweet, only 1 show more");
+//   let url = "https://twitter.com/art_science_x/status/1493630096648949760";
+//   let tweets = url_to_tweets(url).await;
+//   // println!("{:?}", tweets);
+//   println!("LENGTH: {:?}", tweets.len());
+//   println!("LAST TWEET: {:?}", tweets[tweets.len() - 1]);
+//   assert_eq!(tweets.len(), 35);
+// }
 
-#[tokio::test]
-async fn text_only_tweets_12() {
-  println!("url_to_tweets()  //  thread, 1st-tweet, MULTIPLE show mores");
-  let url = "https://twitter.com/mold_time/status/1412827749828513800";
-  let tweets = url_to_tweets(url).await;
-  // println!("{:?}", tweets);
-  println!("LENGTH: {:?}", tweets.len());
-  println!("LAST TWEET: {:?}", tweets[tweets.len() - 1]);
-  assert!(tweets.len() >= 140);
-  // i counted the tweets on twitter by hand and 140 is the correct number :)
-}
+// #[tokio::test]
+// async fn text_only_tweets_12() {
+//   println!("url_to_tweets()  //  thread, 1st-tweet, MULTIPLE show mores");
+//   let url = "https://twitter.com/mold_time/status/1412827749828513800";
+//   let tweets = url_to_tweets(url).await;
+//   // println!("{:?}", tweets);
+//   println!("LENGTH: {:?}", tweets.len());
+//   println!("LAST TWEET: {:?}", tweets[tweets.len() - 1]);
+//   assert!(tweets.len() >= 140);
+//   // i counted the tweets on twitter by hand and 140 is the correct number :)
+// }

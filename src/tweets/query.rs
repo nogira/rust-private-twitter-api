@@ -27,6 +27,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
   let tweets_json = fetch_json["tweets"].as_object().unwrap();
 
   for (_, tweet_json) in tweets_json {
+
     let id = tweet_json["id_str"].as_str().unwrap().to_string();
 
     let user = user_id_to_name_map[tweet_json["user_id_str"].as_str().unwrap()].to_string();
@@ -105,12 +106,14 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
     };
 
     let thread_id = {
-      if let Some(thread_id) = tweet_json["self_thread"].as_str() {
-        Some(thread_id.to_string())
+      if let Some(thread_id) = tweet_json["self_thread"].as_object() {
+        Some(thread_id["id_str"].as_str().unwrap().to_string())
       } else {
         None
       }
     };
+
+    println!("{:?}", &thread_id);
 
     let retweet_tweet_id = {
       if let Some(retweet_tweet_id) = tweet_json["retweeted_status_id_str"].as_str() {
