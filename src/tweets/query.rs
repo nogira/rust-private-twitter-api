@@ -7,6 +7,7 @@ use regex::Regex;
 
 /// get tweets from twitter search query
 pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
+  let mut parsed_tweets: Vec<QueryTweet> = Vec::new();
 
   let fetch_json = query_fetch(query).await;
   
@@ -14,15 +15,16 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
   // need to get user info first
   
   /* -------------------------------- users -------------------------------- */
-  let users_json = fetch_json["users"].as_object().unwrap();
+  let users_json = match fetch_json["users"].as_object() {
+    Some(users) => users,
+    None => return parsed_tweets,
+  };
   let mut user_id_to_name_map: HashMap<&str, &str> = HashMap::new();
   for (_, user_json) in users_json {
     let id = user_json["id_str"].as_str().unwrap();
     let name = user_json["screen_name"].as_str().unwrap();
     user_id_to_name_map.insert(id, name);
   }
-
-  let mut parsed_tweets: Vec<QueryTweet> = Vec::new();
 
   let tweets_json = fetch_json["tweets"].as_object().unwrap();
 
