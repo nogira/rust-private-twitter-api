@@ -3,7 +3,6 @@ use crate::{
   types::{QueryTweet, TweetMedia, TweetURLs, Quote},
 };
 use std::collections::HashMap;
-use regex::Regex;
 
 /// get tweets from twitter search query
 pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
@@ -240,13 +239,8 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
         // (see comment above initiation of trackTweetIDsOfAdded)
 
         // get array of users of the feed
-        // allowed chars in twitter name are same as `\w`:
-        // https://web.archive.org/web/20210506165356/https://www.techwalla.com/articles/what-characters-are-allowed-in-a-twitter-name
-        let regex = Regex::new(r"from:\w+").unwrap();
-        let query_users: Vec<String> = regex.find_iter(query)
-          //                           slice to remove `from:` of each match
-          .filter_map(|v| Some((&(v.as_str())[5..]).to_string()))
-          .collect();
+        let query_users: Vec<String> = query_to_query_users(query);
+
         // add quoted tweet id to array of quoted tweet ids if different 
         // user to feed user
         let is_diff_user = ! query_users.contains(&quoted_tweet.user);
@@ -272,4 +266,55 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
   parsed_tweets = temp_tweets;
 
   parsed_tweets
+}
+
+/// extract the usernames from the search query
+fn query_to_query_users(query: &str) -> Vec<String> {
+  // allowed chars in twitter name are same as `\w`:
+  // https://web.archive.org/web/20210506165356/https://www.techwalla.com/articles/what-characters-are-allowed-in-a-twitter-name
+  // let regex = Regex::new(r"from:\w+").unwrap();
+  // let query_users: Vec<String> = regex.find_iter(query)
+  //   //                           slice to remove `from:` of each match
+  //   .filter_map(|v| Some((&(v.as_str())[5..]).to_string()))
+  //   .collect();
+  let mut query_users = Vec::new();
+  let mut collecting_name = false;
+  let mut user_buf = String::new();
+  let mut detect_buf = String::from("     ");
+  for char in query.chars() {
+    if collecting_name {
+        let is_alphanumeric = match char {
+          'a'..='z' | 'A'..='Z' | '0'..='9' => true,
+          _ => false,
+        };
+        if is_alphanumeric {
+          user_buf.push(char);
+        } else {
+          collecting_name = false;
+          query_users.push(user_buf);
+          user_buf = String::new();
+        }
+        
+    } else {
+      // store last 5 chars as `detect_buf` to match "from:" when hit a ":"
+      detect_buf.remove(0);
+      detect_buf.push(char);
+      if char.to_string() == ":" {
+        if detect_buf == "from:" {
+          collecting_name = true;
+        }
+      }
+    }
+  }
+  // in the case that the username ends at end of string, need to add the name to vec
+  if collecting_name {
+      query_users.push(user_buf);
+  }
+  query_users
+}
+
+#[test]
+fn t_query_parse() {
+  let query = "from:elon + (from:wooo) + from:end";
+  assert!(vec!["elon".to_string(), "wooo".to_string(), "end".to_string()] == query_to_query_users(query));
 }
