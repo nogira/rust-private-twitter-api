@@ -28,11 +28,8 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
   let tweets_json = fetch_json["tweets"].as_object().unwrap();
 
   for (_, tweet_json) in tweets_json {
-
     let id = tweet_json["id_str"].as_str().unwrap().to_string();
-
     let user = user_id_to_name_map[tweet_json["user_id_str"].as_str().unwrap()].to_string();
-
     let text = tweet_json["full_text"].as_str().unwrap().to_string();
 
     let media = {
@@ -98,30 +95,19 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
       }
     };
 
-    let quoted_tweet_id = {
-      if let Some(quoted_tweet_id) = tweet_json["quoted_status_id_str"].as_str() {
-        Some(quoted_tweet_id.to_string())
-      } else {
-        None
-      }
+    let quoted_tweet_id = match tweet_json["quoted_status_id_str"].as_str() {
+      Some(quoted_tweet_id) => Some(quoted_tweet_id.to_string()),
+      None => None,
     };
 
-    let thread_id = {
-      if let Some(thread_id) = tweet_json["self_thread"].as_object() {
-        Some(thread_id["id_str"].as_str().unwrap().to_string())
-      } else {
-        None
-      }
+    let thread_id = match tweet_json["self_thread"].as_object() {
+      Some(thread_id) => Some(thread_id["id_str"].as_str().unwrap().to_string()),
+      None => None,
     };
 
-    println!("{:?}", &thread_id);
-
-    let retweet_tweet_id = {
-      if let Some(retweet_tweet_id) = tweet_json["retweeted_status_id_str"].as_str() {
-        Some(retweet_tweet_id.to_string())
-      } else {
-        None
-      }
+    let retweet_tweet_id = match tweet_json["retweeted_status_id_str"].as_str(){
+      Some(retweet_tweet_id) => Some(retweet_tweet_id.to_string()),
+      None => None,
     };
 
     let date = tweet_json["created_at"].as_str().unwrap().to_string();
@@ -294,15 +280,12 @@ fn query_to_query_users(query: &str) -> Vec<String> {
           query_users.push(user_buf);
           user_buf = String::new();
         }
-        
     } else {
       // store last 5 chars as `detect_buf` to match "from:" when hit a ":"
       detect_buf.remove(0);
       detect_buf.push(char);
-      if char.to_string() == ":" {
-        if detect_buf == "from:" {
-          collecting_name = true;
-        }
+      if char.to_string() == ":" && detect_buf == "from:" {
+        collecting_name = true;
       }
     }
   }
