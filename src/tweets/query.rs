@@ -112,6 +112,8 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
 
     let date = tweet_json["created_at"].as_str().unwrap().to_string();
 
+    let faves = tweet_json["favorite_count"].as_u64().unwrap();
+
     let parsed_tweet = QueryTweet {
       id,
       user,
@@ -124,6 +126,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
       quoted_tweet_id,
       retweet_tweet_id,
       retweeted_by: None,
+      faves,
     };
     parsed_tweets.push(parsed_tweet);
   }

@@ -57,7 +57,7 @@ async fn test_threads() {
   println!("query_to_tweets()  //  query that gets threads");
   let query = "from:balajis -filter:replies min_faves:500";
   let tweets = query_to_tweets(&query).await;
-  println!("{:?}", &tweets[0]);
-  println!("NUM TWEETS: {:?}", tweets.len());
+  // println!("{:?}", &tweets[0]);
+  // println!("NUM TWEETS: {:?}", tweets.len());
   // assert_eq!(tweets.len(), 1);
 }

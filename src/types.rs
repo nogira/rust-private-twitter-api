@@ -72,4 +72,6 @@ pub struct QueryTweet {
   pub quoted_tweet_id: Option<String>,
   pub retweet_tweet_id: Option<String>,
   pub retweeted_by: Option<Vec<String>>,
+
+  pub faves: u64,
 }
