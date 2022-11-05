@@ -92,8 +92,6 @@ async fn url_to_tweets_no_cursor_position(url: &str) -> Vec<Tweet> {
         - for this, just add main tweet group to allParsedTweets
   */
 
-  println!("{:?}", main_group_tweets.clone());
-
   // if there is a next tweet group, get it
   let mut next_tweet_group: Vec<Tweet> = Vec::new();
 
