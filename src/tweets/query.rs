@@ -258,7 +258,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
 }
 
 /// extract the usernames from the search query
-fn query_to_query_users(query: &str) -> Vec<String> {
+pub fn query_to_query_users(query: &str) -> Vec<String> {
   // allowed chars in twitter name are same as `\w`:
   // https://web.archive.org/web/20210506165356/https://www.techwalla.com/articles/what-characters-are-allowed-in-a-twitter-name
   // let regex = Regex::new(r"from:\w+").unwrap();
@@ -297,10 +297,4 @@ fn query_to_query_users(query: &str) -> Vec<String> {
       query_users.push(user_buf);
   }
   query_users
-}
-
-#[test]
-fn t_query_parse() {
-  let query = "from:elon + (from:wooo) + from:end";
-  assert!(vec!["elon".to_string(), "wooo".to_string(), "end".to_string()] == query_to_query_users(query));
 }

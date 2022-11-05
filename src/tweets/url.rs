@@ -328,14 +328,4 @@ pub async fn url_to_recommended_tweets(url: &str) -> Vec<Tweet> {
   return all_parsed_tweets;
 }
 
-#[cfg(test)]
-mod tests {
-  // #[tokio::test]
-  // async fn recommended_tweets_test() {
-  //   println!("url_to_tweets()  //  thread, 1st-tweet");
-  //   let url = "https://twitter.com/epolynya/status/1513868637307691009";
-  //   let tweets = url_to_recommended_tweets(url).await;
-  //   // println!("{:?}", tweets);
-  //   assert!(tweets.len() > 10); // should be 24, so i prob need to join cursor query
-  // }
-}
+
