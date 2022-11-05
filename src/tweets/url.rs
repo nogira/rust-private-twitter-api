@@ -1,6 +1,6 @@
 use crate::{
   fetch::id_fetch,
-  types::{Tweet, TweetMedia, TweetURLs, Quote},
+  types::{Tweet, TweetMedia, TweetURLs},
 };
 use serde_json::Value;
 use tokio::time::{sleep, Duration};
@@ -92,21 +92,25 @@ async fn url_to_tweets_no_cursor_position(url: &str) -> Vec<Tweet> {
         - for this, just add main tweet group to allParsedTweets
   */
 
+  println!("{:?}", main_group_tweets.clone());
+
   // if there is a next tweet group, get it
   let mut next_tweet_group: Vec<Tweet> = Vec::new();
 
-  let next_group = &tweet_groups[main_tweet_index + 1];
-  // check next group exists
-  if next_group.is_object() {
-    // if the tweet group is not the show more button, add tweet group
-    if next_group.get("content")
-      .and_then(|v| v.get("itemContent"))
-      .and_then(|v| v.get("cursorType"))
-      .and_then(|v| v.as_str()).unwrap_or("fail") != "ShowMoreThreadsPrompt" {
-      next_tweet_group = tweet_group_to_tweets(next_group);
-    }
-  };
-  
+  // need to use `.get()` bc there might not be any replies to the main tweet
+  if let Some(next_group) = &tweet_groups.get(main_tweet_index + 1) {
+    // check next group exists
+    if next_group.is_object() {
+      // if the tweet group is not the show more button, add tweet group
+      if next_group.get("content")
+        .and_then(|v| v.get("itemContent"))
+        .and_then(|v| v.get("cursorType"))
+        .and_then(|v| v.as_str()).unwrap_or("fail") != "ShowMoreThreadsPrompt" {
+        next_tweet_group = tweet_group_to_tweets(next_group);
+      }
+    };
+  }
+
   // if main tweet is first tweet, add first tweetGroup (main tweet), and 
   // second tweetGroup (the thread) if it is same user, to allParsedTweets
   if main_tweet_index == 0 {
@@ -211,7 +215,7 @@ fn tweet_module_group_to_tweets(tweet_group: &Vec<Value>) -> Vec<Tweet> {
         id: "more_tweets_in_thread".to_string(),
         user: "".to_string(),
         text: show_more_cursor, 
-        media: None, urls: None, quote: None, thread_id: None
+        media: None, urls: None, quote: None, thread_id: None, extra: None
       });
       break;
     }
@@ -222,7 +226,7 @@ fn tweet_module_group_to_tweets(tweet_group: &Vec<Value>) -> Vec<Tweet> {
 }
 
 
-/// return `Tweet`, `Quote`, or `None`
+/// return `Tweet`, or `None`
 fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
   let unparsed_tweet = match unparsed_tweet.get("itemContent")
     .and_then(|v| v.get("tweet_results"))
@@ -274,17 +278,20 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
     None => None,
   };
 
-  let quote: Option<Quote> = match unparsed_tweet.get("quoted_status_result") {
+  let quote: Option<Box<Tweet>> = match unparsed_tweet.get("quoted_status_result") {
     Some(quote_contents) => {
       if let Some(tweet) = parse_tweet_contents(quote_contents) {
-        let quote = Quote {
+        
+        let quote = Box::new(Tweet {
           id: tweet.id,
           user: tweet.user,
           text: tweet.text,
           media: tweet.media,
           urls: tweet.urls,
-          thread_id: tweet.thread_id
-        };
+          thread_id: tweet.thread_id,
+          quote: None,
+          extra: None,
+        });
         // not sure y tf i need these 2 lines of code ?????
         // mainTweet.quote.url = tweetContents.legacy.quoted_status_permalink
         // delete mainTweet.quote.url.display
@@ -304,6 +311,7 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
     urls,
     quote,
     thread_id: None,
+    extra: None,
   })
 }
 

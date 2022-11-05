@@ -1,12 +1,12 @@
 use crate::{
   fetch::query_fetch,
-  types::{QueryTweet, TweetMedia, TweetURLs, Quote},
+  types::{TweetMedia, TweetURLs, Tweet, TweetExtra},
 };
 use std::collections::HashMap;
 
 /// get tweets from twitter search query
-pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
-  let mut parsed_tweets: Vec<QueryTweet> = Vec::new();
+pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
+  let mut parsed_tweets: Vec<Tweet> = Vec::new();
 
   let fetch_json = query_fetch(query).await;
   
@@ -114,7 +114,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
 
     let faves = tweet_json["favorite_count"].as_u64().unwrap();
 
-    let parsed_tweet = QueryTweet {
+    let parsed_tweet = Tweet {
       id,
       user,
       text,
@@ -122,11 +122,13 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
       urls,
       quote: None,
       thread_id,
-      date,
-      quoted_tweet_id,
-      retweet_tweet_id,
-      retweeted_by: None,
-      faves,
+      extra: Some(TweetExtra {
+        date,
+        quoted_tweet_id,
+        retweet_tweet_id,
+        retweeted_by: None,
+        faves,
+      }),
     };
     parsed_tweets.push(parsed_tweet);
   }
@@ -143,7 +145,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
   retweeted tweet, and user_id_str, which is the id of the user that retweeted
   */
 
-  let mut tweets_minus_retweet_dupes: Vec<QueryTweet> = Vec::new();
+  let mut tweets_minus_retweet_dupes: Vec<Tweet> = Vec::new();
   #[derive(Clone)]
   struct RetweetItemInfo {
     id: String,
@@ -153,7 +155,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
 
   for parsed_tweet in parsed_tweets {
     // if a retweet, so something
-    if let Some(retweet_tweet_id) = parsed_tweet.retweet_tweet_id {
+    if let Some(retweet_tweet_id) = parsed_tweet.extra.clone().unwrap().retweet_tweet_id {
       // track the id and user of the retweet, so we can assign this info 
       // to the original tweet
       let id = retweet_tweet_id;
@@ -168,7 +170,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
   parsed_tweets = tweets_minus_retweet_dupes;
 
   // add user retweet info to original tweet
-  let mut tweets_incl_retweeted_by: Vec<QueryTweet> = Vec::new();
+  let mut tweets_incl_retweeted_by: Vec<Tweet> = Vec::new();
 
   for mut parsed_tweet in parsed_tweets.clone() {
     let matches: Vec<RetweetItemInfo> = track_retweets.clone().into_iter()
@@ -177,7 +179,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
 
     if matches.len() != 0 {
       // TODO: MAKE SURE THIS ACTUALLY MODIFIES THE `parsed_tweets` VEC
-      parsed_tweet.retweeted_by = Some(
+      parsed_tweet.extra.as_mut().unwrap().retweeted_by = Some(
         matches.into_iter().map(|x| x.user).collect()
       );
     }
@@ -205,23 +207,25 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
   // attach quoted tweet to quote tweet, and track which tweets are quoted by 
   // tweet id
   let mut quoted_ids: Vec<String> = Vec::new();
-  let mut temp_tweets: Vec<QueryTweet> = Vec::new();
+  let mut temp_tweets: Vec<Tweet> = Vec::new();
 
   for mut parsed_tweet in parsed_tweets.clone() {
-    if let Some(quoted_tweet_id) = parsed_tweet.quoted_tweet_id.clone() {
+    if let Some(quoted_tweet_id) = parsed_tweet.extra.clone().unwrap().quoted_tweet_id.as_ref().clone() {
       // get first tweet from parsed_tweets where it's id matches quoted_tweet_id
       let quoted_tweet = parsed_tweets.clone().into_iter()
-        .find(|t| t.id == quoted_tweet_id);
+        .find(|t| &t.id == quoted_tweet_id);
       if let Some(quoted_tweet) = quoted_tweet.clone() {
         // add quote tweet to tweet that quotes it
-        parsed_tweet.quote = Some(Quote {
+        parsed_tweet.quote = Some(Box::new(Tweet {
           id: quoted_tweet.id.clone(),
           user: quoted_tweet.user.clone(),
           text: quoted_tweet.text.clone(),
           media: quoted_tweet.media.clone(),
           urls: quoted_tweet.urls.clone(),
           thread_id: quoted_tweet.thread_id.clone(),
-        });
+          quote: None,
+          extra: None,
+        }));
 
         // track added tweets, UNLESS TWEET THAT IS QUOTED IS BY SAME 
         // USER OF FEED (e.g. from:elonmusk)
@@ -234,7 +238,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<QueryTweet> {
         // user to feed user
         let is_diff_user = ! query_users.contains(&quoted_tweet.user);
         if is_diff_user {
-          quoted_ids.push(quoted_tweet.clone().id);
+          quoted_ids.push((&quoted_tweet).id.clone());
         }
       }
     }
