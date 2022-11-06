@@ -8,6 +8,8 @@ use super::parsing::{parse_urls, parse_media};
 use serde_json::Value;
 use tokio::time::{sleep, Duration};
 
+// TODO: may be able to simplify some of this stuff with `["__typename"].as_str()` ???
+
 pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
   let tweet_id = url.split("/").collect::<Vec<&str>>()[5];
   let mut tweets = url_to_tweets_no_cursor_position(tweet_id).await;
@@ -44,10 +46,8 @@ pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
 
 async fn url_to_tweets_with_cursor_position(tweet_id: &str, cursor: &str) -> Vec<Tweet> {
   let tweet_groups_json = id_fetch(tweet_id, cursor, false).await.unwrap();
-  let tweet_groups = tweet_groups_json.as_array().unwrap();
-  let all_parsed_tweets: Vec<Tweet> = tweet_module_group_to_tweets(&tweet_groups);
-
-  all_parsed_tweets
+  let tweet_group = tweet_groups_json.as_array().unwrap();
+  tweet_module_group_to_tweets(&tweet_group)
 }
 
 /// get a tweet/tweet-thread in a parsed format (most of the junk removed), as a
@@ -65,7 +65,6 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
   let main_tweet_index: usize = get_main_tweet_index(&tweet_groups, tweet_id);
   // get the main group tweets
   let mut main_group_tweets: Vec<Tweet> = tweet_group_to_tweets(&tweet_groups[main_tweet_index]);
-  println!("!!: {:?}", main_group_tweets);
 
   /* ---- Examples of tweet patterns we need to match ----
 
@@ -169,53 +168,27 @@ fn get_main_tweet_index(tweet_groups: &Vec<Value>, tweet_id: &str) -> usize {
 }
 
 /// get the tweet/tweets from a tweet group
+/// 
+/// the tweet group is either a single tweet, or multiple tweets
 fn tweet_group_to_tweets(tweet_group: &Value) -> Vec<Tweet> {
-  println!("1");
-  // the tweet group is either a single tweet, or multiple tweets
-
-  /* -------if group has items (I.E. TWEET GROUP HAS MULTIPLE TWEETS)------- */
-  if let Some(contents) = tweet_group.get("content")
-    .and_then(|v| v.get("items")).and_then(|v| v.as_array()) {
-    println!("1.5");
-    tweet_module_group_to_tweets(contents)
-
-  /* -------if group has no items (I.E. TWEET GROUP IS JUST ONE TWEET)------- */
-  } else {
-    match parse_tweet_contents(&tweet_group["content"]) {
+  match tweet_group.get("content")
+  .and_then(|v| v.get("items")).and_then(|v| v.as_array()) {
+    /* ------if group has items (I.E. TWEET GROUP HAS MULTIPLE TWEETS)------ */
+    Some(contents) => tweet_module_group_to_tweets(contents),
+    /* ------if group has no items (I.E. TWEET GROUP IS JUST ONE TWEET)------ */
+    None => match parse_tweet_contents(&tweet_group["content"]) {
       Some(tweet) => Vec::from([tweet]),
       None => Vec::new(),
-    }
+    },
   }
 }
 
+/// loop through json tweet items to get parsed tweets
 fn tweet_module_group_to_tweets(tweet_group: &Vec<Value>) -> Vec<Tweet> {
-  let mut tweets: Vec<Tweet> = Vec::new();
-
-  for tweet_item in tweet_group.clone() {
-    let unparsed_tweet = &tweet_item["item"];
-
-    // if its a "show more" item, add as special last tweet (to signal we need 
-    // a new request at the cursor position), then break
-    if unparsed_tweet.get("itemContent")
-      .and_then(|v| v.get("displayTreatment"))
-      .and_then(|v| v.get("actionText"))
-      .and_then(|v| v.as_str()).unwrap_or("fail") == "Show replies" {
-      let show_more_cursor = unparsed_tweet["itemContent"]["value"].as_str().unwrap().to_string();
-      tweets.push(Tweet {
-        id: "more_tweets_in_thread".to_string(),
-        user: "".to_string(),
-        text: show_more_cursor, 
-        media: None, urls: None, quote: None, thread_id: None, extra: None
-      });
-      break;
-    }
-    // if normal tweet, just add the normal tweet
-    let parsed_tweet: Option<Tweet> = parse_tweet_contents(unparsed_tweet);
-    tweets.push(parsed_tweet.unwrap());
-  }
-  return tweets;
+  tweet_group.iter().map(|tweet_item| {
+    parse_tweet_contents(&tweet_item["item"]).unwrap()
+  }).collect()
 }
-
 
 /// convert a single tweet object to a `Tweet`
 fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
@@ -224,40 +197,57 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
     .and_then(|v| v.get("result")) {
     // if normal tweet
     Some(v) => v,
-    // if quote tweet
-    None => &unparsed_tweet["result"]
-    // None => match unparsed_tweet.get("result") {
-    //   Some(v) => v,
-    //   // if the tweet_item is a "Show more" button, it has no `result` attr, so 
-    //   // above will return `None`. if so, it's not a tweet, so return `None`
-    //   // FIXME: does this ever trigger??? bc i handle "show more"s in `tweet_module_group_to_tweets`
-    //   None => return None,
-    // },
+    // if quoted tweet OR "Show more" button
+    None => match unparsed_tweet.get("result") {
+      // if quoted tweet
+      Some(unparsed_tweet) => {
+        // if tweet is unable to be viewed (e.g. "You’re unable to view this Tweet 
+        // because this account owner limits who can view their Tweets. Learn more"), 
+        // unparsed_tweet["legacy"] will equal null, but we still want to tell the 
+        // user this tweet is missing, so we must create our own tweet
+        if unparsed_tweet["legacy"].is_null() {
+          // FIXME: it is possible this will not give the desirable behavior if 
+          // the non-viewable tweet is a deleted tweet, and is from the same 
+          // user as the main tweet (while this is the first tweet in the 
+          // thread), thus the user match check will assume it is not the same 
+          // user, and not add ANY of the thread tweets, but we still want the 
+          // thread tweets
+          // perhaps i just need to check the next tweet if first tweet checked 
+          // has user="hidden"
+          println!("!!!: {:?}", unparsed_tweet);
+          return Some(Tweet {
+            id: "".to_string(),
+            user: "hidden".to_string(),
+            text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
+            media: None, urls: None, quote: None, thread_id: None, extra: None,
+          })
+        }
+        // if above if-statement failed to trigger, the tweet is visible so we can parse it
+        unparsed_tweet
+      },
+      // if the tweet_item is a "Show more" button, it has no `result` attr, so 
+      // `None` is returned
+      None => {
+        // if its a "show more" item, add as special last tweet (to signal we need 
+        // a new request at the cursor position), then break
+        if unparsed_tweet.get("itemContent")
+        .and_then(|v| v.get("displayTreatment"))
+        .and_then(|v| v.get("actionText"))
+        .and_then(|v| v.as_str()).unwrap_or("fail") == "Show replies" {
+          let show_more_cursor = unparsed_tweet["itemContent"]["value"].as_str().unwrap().to_string();
+          return Some(Tweet {
+            id: "more_tweets_in_thread".to_string(),
+            user: "".to_string(),
+            text: show_more_cursor, 
+            media: None, urls: None, quote: None, thread_id: None, extra: None
+          });
+        } else {
+          // FIXME: does this ever trigger???
+          return None;
+        }
+      },
+    },
   };
-  // if tweet is unable to be viewed (e.g. "You’re unable to view this Tweet 
-  // because this account owner limits who can view their Tweets. Learn more"), 
-  // unparsed_tweet["legacy"] will equal null, but we still want to tell the 
-  // user this tweet is missing, so we must create out own tweet
-  if unparsed_tweet["legacy"].is_null() {
-    // for now, pretend there is no tweet
-    // FIXME: in the tweet this fixes, it does no seem the tweet is a part of 
-    // the thread, so we don't want to include it, but if the tweet *was* a 
-    // part of the thread, we would want it, so how do i differentiate between 
-    // the two??
-    // return None;
-    println!("2");
-    return Some(Tweet {
-      id: "".to_string(),
-      user: "unknown".to_string(),
-      text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
-      media: None,
-      urls: None,
-      quote: None,
-      thread_id: None,
-      extra: None,
-    })
-  }
-
   let id = unparsed_tweet["legacy"]["id_str"].as_str().unwrap().to_string();
   let user = unparsed_tweet["core"]["user_results"]["result"]["legacy"]["screen_name"].as_str().unwrap().to_string();
   let text = unparsed_tweet["legacy"]["full_text"].as_str().unwrap().to_string();
@@ -275,27 +265,21 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
     },
     None => None,
   };
-
   return Some(Tweet { id, user, text, media, urls, quote, thread_id: None, extra: None })
 }
-
 
 /* ----------------------- url_to_recommended_tweets ----------------------- */
 
 pub async fn url_to_recommended_tweets(url: &str) -> Vec<Tweet> {
-
   let id_from_input_url = url.split("/").collect::<Vec<&str>>()[5];
-  let tweet_groups_json = id_fetch(&id_from_input_url, "", true).await.unwrap();
+  let tweet_groups_json = id_fetch(&id_from_input_url, 
+    "", true).await.unwrap();
   let tweet_groups = tweet_groups_json.as_array().unwrap();
-  let mut all_parsed_tweets: Vec<Tweet> = Vec::new();
 
-  // all recommended tweets are in second-last tweetGroup item
-  let recommended_tweets = tweet_groups[&tweet_groups.len() - 2].get("content").and_then(|v| v.get("items")).and_then(|v| v.as_array()).unwrap();
-  for tweet in recommended_tweets {
-      let tweet_contents = &tweet["item"];
-      if let Some(parsed_tweet) = parse_tweet_contents(tweet_contents) {
-          all_parsed_tweets.push(parsed_tweet);
-      }
-  }
-  return all_parsed_tweets;
+  // all recommended tweets are in second-last tweet_group item
+  let recommended_tweets = tweet_groups[&tweet_groups.len() - 2]
+    .get("content").and_then(|v| v.get("items"))
+    .and_then(|v| v.as_array()).unwrap();
+  
+  tweet_module_group_to_tweets(recommended_tweets)
 }
