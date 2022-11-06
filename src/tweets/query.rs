@@ -1,7 +1,8 @@
 use crate::{
   fetch::query_fetch,
-  types::{TweetMedia, TweetURLs, Tweet, TweetExtra},
+  types::{Tweet, TweetExtra},
 };
+use super::parsing::{parse_urls, parse_media};
 use std::collections::HashMap;
 
 /// get tweets from twitter search query
@@ -32,68 +33,9 @@ pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
     let user = user_id_to_name_map[tweet_json["user_id_str"].as_str().unwrap()].to_string();
     let text = tweet_json["full_text"].as_str().unwrap().to_string();
 
-    let media = {
-      if let Some(media_json) = tweet_json["extended_entities"]["media"].as_array() {
-        let mut media: Vec<TweetMedia> = Vec::new();
+    let media = parse_media(tweet_json);
 
-        for item in media_json {
-          let shortened_img_url = item["url"].as_str().unwrap().to_string();
-          let full_img_url = item["media_url_https"].as_str().unwrap().to_string();
-          let kind = item["type"].as_str().unwrap().to_string();
-
-          let mut video_url: Option<String> = None;
-          if kind == "video" {
-            // sort array by bitrate so that the highest bitrate variant is first in 
-            // the array. the .m3u8` variant doesn't have a bitrate property, so must 
-            // use `?? -1` to push it to the end of the array
-            let variants = item["video_info"]["variants"].as_array().unwrap();
-            let mut highest_bitrate = 0;
-            let mut highest_bitrate_mp4_url = "";
-            for variant in variants {
-              // need default val bc one of the variants never has a bitrate val
-              let bitrate = variant["bitrate"].as_i64().unwrap_or(0);
-              if bitrate > highest_bitrate {
-                highest_bitrate = bitrate;
-                highest_bitrate_mp4_url = variant["url"].as_str().unwrap();
-              }
-            }
-            video_url = Some(highest_bitrate_mp4_url.to_string());
-          } else if kind == "animated_gif" {
-            // only one entry in the variants array for gifs
-            video_url = Some(
-              item["video_info"]["variants"][0]["url"].as_str().unwrap().to_string()
-            );
-          }
-          let media_item = TweetMedia {
-            shortened_img_url,
-            full_img_url,
-            kind,
-            video_url,
-          };
-          media.push(media_item);
-        }
-        Some(media)
-      } else {
-        None
-      }
-    };
-
-    let urls = {
-      let urls_json = tweet_json["entities"]["urls"].as_array().unwrap();
-      if urls_json.len() != 0 {
-        let mut urls: Vec<TweetURLs> = Vec::new();
-        for url_json in urls_json {
-          let item = TweetURLs {
-            shortened_url: url_json["url"].as_str().unwrap().to_string(),
-            full_url: url_json["expanded_url"].as_str().unwrap().to_string(),
-          };
-          urls.push(item);
-        }
-        Some(urls)
-      } else {
-        None
-      }
-    };
+    let urls = parse_urls(tweet_json);
 
     let quoted_tweet_id = match tweet_json["quoted_status_id_str"].as_str() {
       Some(quoted_tweet_id) => Some(quoted_tweet_id.to_string()),

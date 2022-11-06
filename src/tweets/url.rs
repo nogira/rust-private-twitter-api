@@ -1,7 +1,8 @@
 use crate::{
   fetch::id_fetch,
-  types::{Tweet, TweetMedia, TweetURLs},
+  types::Tweet,
 };
+use super::parsing::{parse_urls, parse_media};
 use serde_json::Value;
 use tokio::time::{sleep, Duration};
 
@@ -244,37 +245,9 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
   let user = unparsed_tweet["core"]["user_results"]["result"]["legacy"]["screen_name"].as_str().unwrap().to_string();
   let text = unparsed_tweet["legacy"]["full_text"].as_str().unwrap().to_string();
 
-  let media = match unparsed_tweet["legacy"]["entities"]["media"].as_array() {
-    Some(media_json) => {
-      let mut media: Vec<TweetMedia> = Vec::new();
-      for img in media_json {
-          let item = TweetMedia {
-              shortened_img_url: img["url"].as_str().unwrap().to_string(),
-              full_img_url: img["media_url_https"].as_str().unwrap().to_string(),
-              kind: img["type"].as_str().unwrap().to_string(), // photo or video
-              video_url: None, // FIXME: implement video parsing
-          };
-          media.push(item);
-      }
-      Some(media)
-    },
-    None => None,
-  };
+  let media = parse_media(&unparsed_tweet["legacy"]);
 
-  let urls = match unparsed_tweet["legacy"]["entities"]["urls"].as_array() {
-    Some(urls_json) => {
-      let mut urls: Vec<TweetURLs> = Vec::new();
-      for url in urls_json {
-          let item = TweetURLs {
-              shortened_url: url["url"].as_str().unwrap().to_string(),
-              full_url: url["expanded_url"].as_str().unwrap().to_string(),
-          };
-          urls.push(item);
-      }
-      Some(urls)
-    },
-    None => None,
-  };
+  let urls = parse_urls(&unparsed_tweet["legacy"]);
 
   let quote: Option<Box<Tweet>> = match unparsed_tweet.get("quoted_status_result") {
     Some(quote_contents) => {
