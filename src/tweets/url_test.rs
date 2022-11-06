@@ -121,6 +121,20 @@ async fn url_test_text_only_tweets_12() {
   // i counted the tweets on twitter by hand and 140 is the correct number :)
 }
 
+#[tokio::test]
+async fn url_test_text_only_tweets_13() {
+  println!("url_to_tweets()  //  not thread, 1st-tweet, first reply is \"You’re unable to view this Tweet because this account owner limits who can view their Tweets\"");
+  let url = "https://twitter.com/_dalten/status/1556728285840564224";
+  let tweets = url_to_tweets(url).await;
+  // println!("{:?}", tweets);
+  // println!("LENGTH: {:?}", tweets.len());
+  // println!("LAST TWEET: {:?}", tweets[tweets.len() - 1]);
+  panic!("");
+  assert!(tweets.len() == 1);
+}
+
+
+
 /* -------------------------------recommended------------------------------- */
 
 #[tokio::test]
