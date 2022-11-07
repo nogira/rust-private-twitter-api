@@ -190,34 +190,34 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
     .and_then(|v| v.get("tweet_results"))
     .and_then(|v| v.get("result")) {
     // if normal tweet
-    Some(v) => v,
+    Some(unparsed_tweet) => {
+      // if tweet is unable to be viewed (e.g. "You’re unable to view this Tweet 
+      // because this account owner limits who can view their Tweets. Learn more"), 
+      // unparsed_tweet["legacy"] will equal null, but we still want to tell the 
+      // user this tweet is missing, so we must create our own tweet
+      if unparsed_tweet["legacy"].is_null() {
+        // FIXME: it is possible this will not give the desirable behavior if 
+        // the non-viewable tweet is a deleted tweet, and is from the same 
+        // user as the main tweet (while this is the first tweet in the 
+        // thread), thus the user match check will assume it is not the same 
+        // user, and not add ANY of the thread tweets, but we still want the 
+        // thread tweets
+        // perhaps i just need to check the next tweet if first tweet checked 
+        // has user="hidden"
+        return Some(Tweet {
+          id: "".to_string(),
+          user: "hidden".to_string(),
+          text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
+          media: None, urls: None, quote: None, thread_id: None, extra: None,
+        })
+      }
+      // if above if-statement failed to trigger, the tweet is visible so we can parse it
+      unparsed_tweet
+    },
     // if quoted tweet OR "Show more" button
     None => match unparsed_tweet.get("result") {
       // if quoted tweet
-      Some(unparsed_tweet) => {
-        // if tweet is unable to be viewed (e.g. "You’re unable to view this Tweet 
-        // because this account owner limits who can view their Tweets. Learn more"), 
-        // unparsed_tweet["legacy"] will equal null, but we still want to tell the 
-        // user this tweet is missing, so we must create our own tweet
-        if unparsed_tweet["legacy"].is_null() {
-          // FIXME: it is possible this will not give the desirable behavior if 
-          // the non-viewable tweet is a deleted tweet, and is from the same 
-          // user as the main tweet (while this is the first tweet in the 
-          // thread), thus the user match check will assume it is not the same 
-          // user, and not add ANY of the thread tweets, but we still want the 
-          // thread tweets
-          // perhaps i just need to check the next tweet if first tweet checked 
-          // has user="hidden"
-          return Some(Tweet {
-            id: "".to_string(),
-            user: "hidden".to_string(),
-            text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
-            media: None, urls: None, quote: None, thread_id: None, extra: None,
-          })
-        }
-        // if above if-statement failed to trigger, the tweet is visible so we can parse it
-        unparsed_tweet
-      },
+      Some(v) => v,
       // if the tweet_item is a "Show more" button, it has no `result` attr, so 
       // `None` is returned
       None => {
