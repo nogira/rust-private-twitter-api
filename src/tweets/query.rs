@@ -7,7 +7,11 @@ use std::collections::HashMap;
 
 /// get tweets from twitter search query
 pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
-  let mut parsed_tweets: Vec<Tweet> = Vec::new();
+  // key is the tweet item id, val is (tweet, quoted_tweet_id, retweeted_tweet_id)
+  // quoted_tweet_id = the id of the tweet being quoted (to be able match quote 
+  //   tweets to the quoted tweet)
+  // retweeted_tweet_id = the id of the tweet being retweeted
+  let mut parsed_tweets_map: HashMap<String, (Tweet, Option<String>, Option<String>)> = HashMap::new();
 
   let fetch_json = query_fetch(query).await;
   
@@ -15,9 +19,9 @@ pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
   // need to get user info first
   
   /* -------------------------------- users -------------------------------- */
-  let users_json = match fetch_json["users"].as_object() {
+  let users_json = match fetch_json["globalObjects"]["users"].as_object() {
     Some(users) => users,
-    None => return parsed_tweets,
+    None => return Vec::new(),
   };
   let mut user_id_to_name_map: HashMap<&str, &str> = HashMap::new();
   for (_, user_json) in users_json {
@@ -26,38 +30,31 @@ pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
     user_id_to_name_map.insert(id, name);
   }
 
-  let tweets_json = fetch_json["tweets"].as_object().unwrap();
+  let tweets_json = fetch_json["globalObjects"]["tweets"].as_object().unwrap();
 
   for (_, tweet_json) in tweets_json {
     let id = tweet_json["id_str"].as_str().unwrap().to_string();
     let user = user_id_to_name_map[tweet_json["user_id_str"].as_str().unwrap()].to_string();
     let text = tweet_json["full_text"].as_str().unwrap().to_string();
-
     let media = parse_media(tweet_json);
-
     let urls = parse_urls(tweet_json);
-
-    let quoted_tweet_id = match tweet_json["quoted_status_id_str"].as_str() {
-      Some(quoted_tweet_id) => Some(quoted_tweet_id.to_string()),
-      None => None,
-    };
-
     let thread_id = match tweet_json["self_thread"].as_object() {
       Some(thread_id) => Some(thread_id["id_str"].as_str().unwrap().to_string()),
       None => None,
     };
-
-    let retweet_tweet_id = match tweet_json["retweeted_status_id_str"].as_str(){
+    let date = tweet_json["created_at"].as_str().unwrap().to_string();
+    let quoted_tweet_id = match tweet_json["quoted_status_id_str"].as_str() {
+      Some(quoted_tweet_id) => Some(quoted_tweet_id.to_string()),
+      None => None,
+    };
+    let retweeted_tweet_id = match tweet_json["retweeted_status_id_str"].as_str(){
       Some(retweet_tweet_id) => Some(retweet_tweet_id.to_string()),
       None => None,
     };
-
-    let date = tweet_json["created_at"].as_str().unwrap().to_string();
-
     let faves = tweet_json["favorite_count"].as_u64().unwrap();
 
     let parsed_tweet = Tweet {
-      id,
+      id: id.clone(),
       user,
       text,
       media,
@@ -66,139 +63,76 @@ pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
       thread_id,
       extra: Some(TweetExtra {
         date,
-        quoted_tweet_id,
-        retweet_tweet_id,
         retweeted_by: None,
         faves,
       }),
     };
-    parsed_tweets.push(parsed_tweet);
+    parsed_tweets_map.insert(id, (parsed_tweet, quoted_tweet_id, retweeted_tweet_id));
   }
 
-  /*
-  retweets have an item for the tweet and an item for the retweet, though it 
-  seems the main difference is that the retweet tweet.text starts with
-  "RT @user: ", where user is the user of the tweet, not the retweeter. thus, 
-  the retweet is essentially a duplicate, sowe can delete the retweet items
-
-  though, it might be nice to know it is a retweet, so add a retweetedBy 
-  property to the tweet
-  the retweet has the property retweeted_status_id_str, which is the id of the
-  retweeted tweet, and user_id_str, which is the id of the user that retweeted
-  */
-
-  let mut tweets_minus_retweet_dupes: Vec<Tweet> = Vec::new();
-  #[derive(Clone)]
-  struct RetweetItemInfo {
-    id: String,
-    user: String,
-  }
-  let mut track_retweets: Vec<RetweetItemInfo> = Vec::new();
-
-  for parsed_tweet in parsed_tweets {
-    // if a retweet, so something
-    if let Some(retweet_tweet_id) = parsed_tweet.extra.clone().unwrap().retweet_tweet_id {
-      // track the id and user of the retweet, so we can assign this info 
-      // to the original tweet
-      let id = retweet_tweet_id;
-      let user = parsed_tweet.user;
-      track_retweets.push(RetweetItemInfo{ id, user });
-      // don't add to new list of tweets
-    } else {
-      // if not a retweet, add to new list of tweets
-      tweets_minus_retweet_dupes.push(parsed_tweet);
-    }
-  }
-  parsed_tweets = tweets_minus_retweet_dupes;
-
-  // add user retweet info to original tweet
-  let mut tweets_incl_retweeted_by: Vec<Tweet> = Vec::new();
-
-  for mut parsed_tweet in parsed_tweets.clone() {
-    let matches: Vec<RetweetItemInfo> = track_retweets.clone().into_iter()
-      .filter(|x| x.id == parsed_tweet.id)
-      .collect();
-
-    if matches.len() != 0 {
-      // TODO: MAKE SURE THIS ACTUALLY MODIFIES THE `parsed_tweets` VEC
-      parsed_tweet.extra.as_mut().unwrap().retweeted_by = Some(
-        matches.into_iter().map(|x| x.user).collect()
-      );
-    }
-    tweets_incl_retweeted_by.push(parsed_tweet);
-  }
-  parsed_tweets = tweets_incl_retweeted_by;
-
-  /*
-  quote tweet items do not contain their quoted tweet, instead the quoted 
-  tweet is its own item. thus, we must manually assign quoted tweets to their 
-  quote tweet. 
-
-  quoted tweets can be deleted, UNLESS that quoted tweet is from the same user
-  as the feed, as in the quoted tweet item is both a quoted tweet and an 
-  original tweet
-
-
-  loop through until find tweet with quote. add the quote tweet to it, then
-  add to parsedTweets.
-  bad idea to remove from array mid-loop, so tracking quoted tweets for second
-  for-loop that removes quoted tweets (again, only if quoted tweet not from 
-  same user as the feed)
-  */
-
-  // attach quoted tweet to quote tweet, and track which tweets are quoted by 
-  // tweet id
-  let mut quoted_ids: Vec<String> = Vec::new();
-  let mut temp_tweets: Vec<Tweet> = Vec::new();
-
-  for mut parsed_tweet in parsed_tweets.clone() {
-    if let Some(quoted_tweet_id) = parsed_tweet.extra.clone().unwrap().quoted_tweet_id.as_ref().clone() {
-      // get first tweet from parsed_tweets where it's id matches quoted_tweet_id
-      let quoted_tweet = parsed_tweets.clone().into_iter()
-        .find(|t| &t.id == quoted_tweet_id);
-      if let Some(quoted_tweet) = quoted_tweet.clone() {
-        // add quote tweet to tweet that quotes it
-        parsed_tweet.quote = Some(Box::new(Tweet {
-          id: quoted_tweet.id.clone(),
-          user: quoted_tweet.user.clone(),
-          text: quoted_tweet.text.clone(),
-          media: quoted_tweet.media.clone(),
-          urls: quoted_tweet.urls.clone(),
-          thread_id: quoted_tweet.thread_id.clone(),
-          quote: None,
-          extra: None,
-        }));
-
-        // track added tweets, UNLESS TWEET THAT IS QUOTED IS BY SAME 
-        // USER OF FEED (e.g. from:elonmusk)
-        // (see comment above initiation of trackTweetIDsOfAdded)
-
-        // get array of users of the feed
-        let query_users: Vec<String> = query_to_query_users(query);
-
-        // add quoted tweet id to array of quoted tweet ids if different 
-        // user to feed user
-        let is_diff_user = ! query_users.contains(&quoted_tweet.user);
-        if is_diff_user {
-          quoted_ids.push((&quoted_tweet).id.clone());
-        }
+  // these are all the ids of actual tweets, rather than e.g. quoted tweets.
+  // note: the id for a retweet is the retweet item, rather than actual tweet
+  let timeline_tweet_ids = &fetch_json["timeline"]["instructions"][0]
+    ["addEntries"]["entries"].as_array().unwrap().into_iter()
+    .filter_map(|item| {
+      let id = item["entryId"].as_str().unwrap();
+      match id.len() == 26 {
+        true => Some((&id[7..]).to_string()),
+        false => None,
       }
-    }
-    temp_tweets.push(parsed_tweet.clone());
-  }
-  parsed_tweets = temp_tweets;
+    }).collect::<Vec<String>>();
 
-  // remove tweets that are quoted by other tweets
-  temp_tweets = Vec::new();
-  for parsed_tweet in parsed_tweets.clone() {
-    // if tweet id is in quoted_ids, it is a quoted tweet to be removed
-    if quoted_ids.contains(&parsed_tweet.id) {
-      // don't add it
-    } else {
-      temp_tweets.push(parsed_tweet);
-    }
-  }
-  parsed_tweets = temp_tweets;
+  let parsed_tweets: Vec<Tweet> = timeline_tweet_ids.into_iter()
+    .map(|id| {
+      let (mut tweet_item, mut quoted_tweet_id, retweeted_tweet_id,
+      ) = parsed_tweets_map.get(id).unwrap().clone();
+
+      /*
+      retweets have an item for the tweet and an item for the retweet, though 
+      it seems the main difference is that the retweet tweet.text starts with
+      "RT @user: ", where user is the user of the tweet, not the retweeter. 
+      thus, the retweet is essentially a duplicate, so we can ignore/delete the 
+      retweet items
+
+      though, it might be nice to know it is a retweet, so add a retweeted_by 
+      property to the tweet
+      the retweet has the property retweeted_status_id_str, which is the id of 
+      the retweeted tweet, and user_id_str, which is the id of the user that 
+      retweeted
+      */
+
+      // if this is a retweet item, return the retweeted tweet
+      if let Some(retweeted_tweet_id) = retweeted_tweet_id {
+        // get who retweeted it
+        // FIXME: IF THIS GETS RETWEETED BY TWO PEOPLE, DOES IT FUCK UP BC THIS 
+        // IMPLEMENTATION DOESN'T ALLOW YOU TO ADD A USER IF THERE IS AN 
+        // EXISTING USER??? THEN AGAIN, DO RETWEET ITEMS GET COMBINED INTO 
+        // ONE??? HOW DO I GET BOTH USERS FROM THE RETWEET ITEM??
+        let retweeted_by = tweet_item.user.clone();
+
+        // swap the tweet to the retweeted tweet, then add who it was retweeted 
+        // by (we are changing the original tweet_item/quoted_tweet_id so we 
+        // can process add the quoted tweet with the same code as w/ 
+        // non-retweeted tweet)
+        (tweet_item, quoted_tweet_id, _,) = parsed_tweets_map
+          .get(&retweeted_tweet_id).unwrap().clone();
+        tweet_item.extra.as_mut().unwrap().retweeted_by = Some(vec![retweeted_by]);
+      }
+
+      /*
+      quote tweet items do not contain their quoted tweet, instead the quoted 
+      tweet is its own item. thus, we must manually assign quoted tweets to 
+      their quote tweet
+      */
+
+      // if this tweet quotes a tweet, add the quoted tweet to it
+      if let Some(quoted_tweet_id) = quoted_tweet_id {
+        let (q_tweet_item, _, _,) = parsed_tweets_map
+          .get(&quoted_tweet_id).unwrap().clone();
+        tweet_item.quote = Some(Box::new(q_tweet_item.clone()));
+      }
+      tweet_item
+    }).collect();
 
   parsed_tweets
 }

@@ -1,12 +1,11 @@
 use std::collections::HashSet;
-
+use serde_json::Value;
+use tokio::time::{sleep, Duration};
 use crate::{
   fetch::id_fetch,
   types::Tweet,
+  tweets::parsing::{parse_urls, parse_media},
 };
-use super::parsing::{parse_urls, parse_media};
-use serde_json::Value;
-use tokio::time::{sleep, Duration};
 
 // TODO: may be able to simplify some of this stuff with `["__typename"].as_str()` ???
 
@@ -47,7 +46,7 @@ pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
 async fn url_to_tweets_with_cursor_position(tweet_id: &str, cursor: &str) -> Vec<Tweet> {
   let tweet_groups_json = id_fetch(tweet_id, cursor, false).await.unwrap();
   let tweet_group = tweet_groups_json.as_array().unwrap();
-  tweet_module_group_to_tweets(&tweet_group)
+  tweet_group_to_tweets(&tweet_group)
 }
 
 /// get a tweet/tweet-thread in a parsed format (most of the junk removed), as a
@@ -59,41 +58,41 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
   let tweet_groups_json = id_fetch(
     tweet_id, "", false).await.unwrap();
   let tweet_groups = tweet_groups_json.as_array().unwrap();
-  let mut all_parsed_tweets: Vec<Tweet> = Vec::new();
 
   // find out which tweet group contains the main tweet
   let main_tweet_index: usize = get_main_tweet_index(&tweet_groups, tweet_id);
   // get the main group tweets
-  let mut main_group_tweets: Vec<Tweet> = tweet_group_to_tweets(&tweet_groups[main_tweet_index]);
+  let mut main_group_tweets: Vec<Tweet> = tweet_group_to_tweet_or_tweets(&tweet_groups[main_tweet_index]);
 
   /* ---- Examples of tweet patterns we need to match ----
 
-  1: (user1) -> user2 -> user3 -> user4   (single tweet)
+  users: A, B, C, D
 
-  2: user1 -> (user2) -> user3 -> user4   (single reply)
+  // original tweet
+  1: (A) ->  B  ->  C  ->  D    (single tweet)
+  3: (A) ->  A  ->  A  ->  B    (start tweet thread)
+  4:  A  -> (A) ->  A  ->  B    (mid tweet thread)
+  5:  A  ->  A  -> (A) ->  B    (end tweet thread)
 
-  3: (user1) -> user1 -> user1 -> user3   (start tweet thread)
-  4: user1 -> (user1) -> user1 -> user3   (mid tweet thread)
-  5: user1 -> user1 -> (user1) -> user3   (end tweet thread)
+  // reply
+  2:  A  -> (B) ->  C  ->  D    (single reply)
+  6:  A  -> (B) ->  B  ->  B    (start reply thread)
+  7:  A  ->  B  -> (B) ->  B    (mid reply thread)
+  8:  A  ->  B  ->  B  -> (B)   (end reply thread)
 
-  6: user1 -> (user2) -> user2 -> user2   (start reply thread)
-  7: user1 -> user2 -> (user2) -> user2   (mid reply thread)
-  8: user1 -> user2 -> user2 -> (user2)   (end reply thread)
-
-  TWO MAIN TYPES OF TWEETS WE NEED TO PARSE:
-  1: tweet group at position 0 OR with diff user in prev tweet group
-        - if next tweet group is diff user, just add main tweet group to 
-          allParsedTweets
-        - if next tweet group is same user, add main tweet group, AND next tweet
-          group (thread) to allParsedTweets
-  2: tweet group with same user prev to main tweet group. this is either mid 
-      or end of thread/reply-thread
-        - for this, just add main tweet group to allParsedTweets
+  TWO TYPES OF TWEETS WE NEED TO PARSE:
+  1) tweet group at position 0 OR with diff user in prev tweet group
+    - if next tweet group is diff user, just return main tweet group
+    - if next tweet group is same user, return main tweet group, AND next tweet
+      group (thread)
+  2) tweet group with same user prev to main tweet group. this is either mid 
+     or end of thread/reply-thread
+    - for this, just return main tweet group
   */
 
   // if there is a next tweet group, get it
   // need to use `.get()` bc there might not be any replies to the main tweet
-  let mut next_tweet_group: Vec<Tweet> = match tweet_groups.get(main_tweet_index + 1) {
+  let mut next_group_tweets: Vec<Tweet> = match tweet_groups.get(main_tweet_index + 1) {
     Some(next_group) =>
       // // check next group exists
       // if next_group.is_object() && // FIXME: <<--- i think this is redundant
@@ -102,7 +101,7 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
       .and_then(|v| v.get("itemContent"))
       .and_then(|v| v.get("cursorType"))
       .and_then(|v| v.as_str()).unwrap_or("fail") != "ShowMoreThreadsPrompt" {
-        true => tweet_group_to_tweets(next_group),
+        true => tweet_group_to_tweet_or_tweets(next_group),
         false => Vec::new(),
       },
     None => Vec::new(),
@@ -112,19 +111,15 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
   // A) IT IS A SINGLE TWEET
   // B) IT IS A SINGLE TWEET PLUS THE THREAD ENTENDING FROM THE SINGLE TWEET
   //
-  // if main tweet is first tweet, add first tweetGroup (main tweet), and 
-  // second tweetGroup (the thread) if it is same user, to allParsedTweets
+  // if main tweet is first tweet, return first tweet group (main tweet), and 
+  // second tweetGroup (the thread) if it is same user
   if main_tweet_index == 0 {
-    let main_tweet_user = &main_group_tweets[0].user.clone();
-    // below line removes all tweets from `main_tweet`, so need to grab 
-    // `main_tweet_user` in advance of 5 lines down
-    all_parsed_tweets = main_group_tweets;
     // IF NEXT TWEET GROUP IS GREATER THAN ZERO (required to be able to get user)
     // AND USER IS SAME AS MAIN TWEET, IT MUST BE THE THREAD, SO APPEND TO ALL_PARSED_TWEETS
-    if next_tweet_group.len() > 0 && &next_tweet_group[0].user == main_tweet_user {
-      all_parsed_tweets.append(&mut next_tweet_group);
+    if next_group_tweets.len() > 0 && next_group_tweets[0].user == main_group_tweets[0].user {
+      main_group_tweets.append(&mut next_group_tweets);
     }
-    return all_parsed_tweets;
+    return main_group_tweets;
   }
 
   /* ---------------IF MAIN TWEET **NOT** IN FIRST TWEET GROUP--------------- */
@@ -133,9 +128,10 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
   // B) TWEET IS SINGLE REPLY IF PREV IS DIFF USER AND POST IS MISSING OR DIFF USER
   // C) TWEET IS THREADED REPLY IF PREV IS DIFF USER AND POST IS SAME USER
 
-  // get prev tweet group
-  let prev_tweet_group: Vec<Tweet> = tweet_group_to_tweets(&tweet_groups[main_tweet_index - 1]);
-  let prev_tweet_is_same_user = prev_tweet_group[0].user == main_group_tweets[0].user;
+  let prev_tweet_is_same_user = {
+    let prev_group_tweets: Vec<Tweet> = tweet_group_to_tweet_or_tweets(&tweet_groups[main_tweet_index - 1]);
+    prev_group_tweets[0].user == main_group_tweets[0].user
+  };
 
   // if prev tweet group is same user, it is mid/end of tweet thread, so just 
   // return main tweet group (which is a single tweet)
@@ -144,13 +140,12 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
 
   // if prev tweet group is diff user, its first tweet of a reply
   } else {
-    let main_tweet_user = &main_group_tweets[0].user.clone();
-    all_parsed_tweets.append(&mut main_group_tweets);
     // add thread if exists
-    if next_tweet_group.len() > 0 && &next_tweet_group[0].user == main_tweet_user {
-      all_parsed_tweets.append(&mut next_tweet_group);
+    if next_group_tweets.len() > 0
+    && next_group_tweets[0].user == main_group_tweets[0].user {
+      main_group_tweets.append(&mut next_group_tweets);
     }
-    return all_parsed_tweets;
+    return main_group_tweets;
   }
 }
 
@@ -163,18 +158,17 @@ fn get_main_tweet_index(tweet_groups: &Vec<Value>, tweet_id: &str) -> usize {
       return i;
     }
   }
-  // will never reach this return, but rust complains if it isn't there
-  return 0;
+  return 0; // will never reach this return, but rust complains if it isn't there
 }
 
 /// get the tweet/tweets from a tweet group
 /// 
 /// the tweet group is either a single tweet, or multiple tweets
-fn tweet_group_to_tweets(tweet_group: &Value) -> Vec<Tweet> {
+fn tweet_group_to_tweet_or_tweets(tweet_group: &Value) -> Vec<Tweet> {
   match tweet_group.get("content")
   .and_then(|v| v.get("items")).and_then(|v| v.as_array()) {
     /* ------if group has items (I.E. TWEET GROUP HAS MULTIPLE TWEETS)------ */
-    Some(contents) => tweet_module_group_to_tweets(contents),
+    Some(contents) => tweet_group_to_tweets(contents),
     /* ------if group has no items (I.E. TWEET GROUP IS JUST ONE TWEET)------ */
     None => match parse_tweet_contents(&tweet_group["content"]) {
       Some(tweet) => Vec::from([tweet]),
@@ -184,7 +178,7 @@ fn tweet_group_to_tweets(tweet_group: &Value) -> Vec<Tweet> {
 }
 
 /// loop through json tweet items to get parsed tweets
-fn tweet_module_group_to_tweets(tweet_group: &Vec<Value>) -> Vec<Tweet> {
+fn tweet_group_to_tweets(tweet_group: &Vec<Value>) -> Vec<Tweet> {
   tweet_group.iter().map(|tweet_item| {
     parse_tweet_contents(&tweet_item["item"]).unwrap()
   }).collect()
@@ -214,7 +208,6 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
           // thread tweets
           // perhaps i just need to check the next tweet if first tweet checked 
           // has user="hidden"
-          println!("!!!: {:?}", unparsed_tweet);
           return Some(Tweet {
             id: "".to_string(),
             user: "hidden".to_string(),
@@ -242,7 +235,8 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
             media: None, urls: None, quote: None, thread_id: None, extra: None
           });
         } else {
-          // FIXME: does this ever trigger???
+          // FIXME: does this ever trigger??? (since i unwrap all 
+          // `Option<Tweet>`s, i should find out soon enough)
           return None;
         }
       },
@@ -281,5 +275,5 @@ pub async fn url_to_recommended_tweets(url: &str) -> Vec<Tweet> {
     .get("content").and_then(|v| v.get("items"))
     .and_then(|v| v.as_array()).unwrap();
   
-  tweet_module_group_to_tweets(recommended_tweets)
+  tweet_group_to_tweets(recommended_tweets)
 }

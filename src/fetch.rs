@@ -99,8 +99,7 @@ pub async fn query_fetch(query: &str) -> Value {
   let url = format!("{}{}", PRIVATE_API_BASE, "2/search/adaptive.json?");
   let url = reqwest::Url::parse_with_params(&url, &parameters).unwrap();
   
-  let json = private_api_get(url).await
-    ["globalObjects"].clone();
+  let json = private_api_get(url).await;
 
   json
 }

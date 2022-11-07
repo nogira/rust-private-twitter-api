@@ -49,6 +49,24 @@ async fn query_test_4() {
 }
 
 #[tokio::test]
+async fn query_test_5() {
+  println!("query_to_tweets()  //  testing 20 tweets, one of which is a self-quote. we want to make sure this quote does not end up as it's own tweet");
+  let query = "from:balajis -filter:replies until:2022-11-4";
+  let tweets = query_to_tweets(&query).await;
+  // println!("{:?}", &tweets);
+  assert_eq!(tweets.len(), 20);
+}
+
+#[tokio::test]
+async fn query_test_6() {
+  println!("query_to_tweets()  //  testing retweets");
+  let query = "from:balajis -filter:replies until:2022-11-4 include:nativeretweets";
+  let tweets = query_to_tweets(&query).await;
+  // println!("{:?}", &tweets);
+  assert_eq!(tweets.len(), 20);
+}
+
+#[tokio::test]
 async fn query_test_misinfo() {
   println!("query_to_tweets()  //  testing misinfo filtering");
   let query = "from:Babygravy9";

@@ -41,9 +41,6 @@ pub struct TweetURLs {
 #[derive(Debug, Clone)]
 pub struct TweetExtra {
   pub date: String,
-  /// temp attribute to be able match quote tweets to the quoted tweet
-  pub quoted_tweet_id: Option<String>,
-  pub retweet_tweet_id: Option<String>,
   pub retweeted_by: Option<Vec<String>>,
   pub faves: u64,
 }
