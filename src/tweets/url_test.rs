@@ -133,7 +133,13 @@ async fn url_test_text_only_tweets_13() {
   assert!(tweets.len() == 1);
 }
 
-
+#[tokio::test]
+async fn url_test_text_only_tweets_14() {
+  println!("url_to_tweets()  //  thread, 1st-tweet, 9th tweet in thread quotes a deleted tweet");
+  let url = "https://www.twitter.com/Replit/status/1385430878231224321";
+  let tweets = url_to_tweets(url).await;
+  assert_eq!(tweets.len(), 11);
+}
 
 /* -------------------------------recommended------------------------------- */
 

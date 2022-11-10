@@ -217,7 +217,18 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
     // if quoted tweet OR "Show more" button
     None => match unparsed_tweet.get("result") {
       // if quoted tweet
-      Some(v) => v,
+      Some(unparsed_tweet) => {
+        // if quoted tweet is deleted / not viewable
+        if unparsed_tweet["legacy"].is_null() {
+          return Some(Tweet {
+            id: "".to_string(),
+            user: "hidden".to_string(),
+            text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
+            media: None, urls: None, quote: None, thread_id: None, extra: None,
+          })
+        }
+        unparsed_tweet
+      },
       // if the tweet_item is a "Show more" button, it has no `result` attr, so 
       // `None` is returned
       None => {
