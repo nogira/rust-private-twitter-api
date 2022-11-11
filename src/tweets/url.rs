@@ -201,12 +201,7 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
           // thread tweets
           // perhaps i just need to check the next tweet if first tweet checked 
           // has user="hidden"
-          return Some(Tweet {
-            id: "".to_string(),
-            user: "hidden".to_string(),
-            text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
-            media: None, urls: None, quote: None, thread_id: None, extra: None,
-          })
+          return create_missing_tweet(unparsed_tweet);
         },
         _ => panic!("idk what type this is: {kind}"),
       }
@@ -217,12 +212,7 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
       Some(unparsed_tweet) => {
         // if quoted tweet is deleted / not viewable
         if unparsed_tweet["legacy"].is_null() {
-          return Some(Tweet {
-            id: "".to_string(),
-            user: "hidden".to_string(),
-            text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
-            media: None, urls: None, quote: None, thread_id: None, extra: None,
-          })
+          return create_missing_tweet(unparsed_tweet);
         }
         unparsed_tweet
       },
@@ -280,6 +270,17 @@ fn item_type(item: &Value) -> String {
     Some(v) => v,
     None => panic!("can't find type:\n{item}"),
   }.to_string()
+}
+
+fn create_missing_tweet(unparsed_tweet: &Value) -> Option<Tweet> {
+  let txt = unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap();
+  Some(Tweet {
+    id: "".to_string(),
+    user: "unknown".to_string(),
+    // slice is to remove " Learn more"
+    text: format!("<<< {} >>>", &txt[..(txt.len() - 11)]),
+    media: None, urls: None, quote: None, thread_id: None, extra: None,
+  })
 }
 
 /* ----------------------- url_to_recommended_tweets ----------------------- */
