@@ -129,7 +129,7 @@ async fn url_test_text_only_tweets_13() {
   // println!("{:?}", tweets);
   // println!("LENGTH: {:?}", tweets.len());
   // println!("LAST TWEET: {:?}", tweets[tweets.len() - 1]);
-  panic!("");
+  // panic!("");
   assert!(tweets.len() == 1);
 }
 
@@ -139,6 +139,14 @@ async fn url_test_text_only_tweets_14() {
   let url = "https://www.twitter.com/Replit/status/1385430878231224321";
   let tweets = url_to_tweets(url).await;
   assert_eq!(tweets.len(), 11);
+}
+
+#[tokio::test]
+async fn url_test_text_only_tweets_15() {
+  println!("url_to_tweets()  //  thread, 1st-tweet, fails bc of some weird json nesting shit specific to this tweet for some reason");
+  let url = "https://www.twitter.com/EthicalSkeptic/status/1588457981645303808";
+  let tweets = url_to_tweets(url).await;
+  assert_eq!(tweets.len(), 6);
 }
 
 /* -------------------------------recommended------------------------------- */

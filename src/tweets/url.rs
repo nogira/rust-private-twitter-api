@@ -93,17 +93,7 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
   // if there is a next tweet group, get it
   // need to use `.get()` bc there might not be any replies to the main tweet
   let mut next_group_tweets: Vec<Tweet> = match tweet_groups.get(main_tweet_index + 1) {
-    Some(next_group) =>
-      // // check next group exists
-      // if next_group.is_object() && // FIXME: <<--- i think this is redundant
-      // if the tweet group is not the show more button, add tweet group
-      match next_group.get("content")
-      .and_then(|v| v.get("itemContent"))
-      .and_then(|v| v.get("cursorType"))
-      .and_then(|v| v.as_str()).unwrap_or("fail") != "ShowMoreThreadsPrompt" {
-        true => tweet_group_to_tweet_or_tweets(next_group),
-        false => Vec::new(),
-      },
+    Some(next_group) => tweet_group_to_tweet_or_tweets(next_group),
     None => Vec::new(),
   };
 
@@ -170,7 +160,7 @@ fn tweet_group_to_tweet_or_tweets(tweet_group: &Value) -> Vec<Tweet> {
     /* ------if group has items (I.E. TWEET GROUP HAS MULTIPLE TWEETS)------ */
     Some(contents) => tweet_group_to_tweets(contents),
     /* ------if group has no items (I.E. TWEET GROUP IS JUST ONE TWEET)------ */
-    None => match parse_tweet_contents(&tweet_group["content"]) {
+    None => match parse_tweet_contents(&tweet_group["content"]["itemContent"]) {
       Some(tweet) => Vec::from([tweet]),
       None => Vec::new(),
     },
@@ -180,39 +170,46 @@ fn tweet_group_to_tweet_or_tweets(tweet_group: &Value) -> Vec<Tweet> {
 /// loop through json tweet items to get parsed tweets
 fn tweet_group_to_tweets(tweet_group: &Vec<Value>) -> Vec<Tweet> {
   tweet_group.iter().map(|tweet_item| {
-    parse_tweet_contents(&tweet_item["item"]).unwrap()
+    parse_tweet_contents(&tweet_item["item"]["itemContent"]).unwrap()
   }).collect()
 }
 
 /// convert a single tweet object to a `Tweet`
 fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
-  let unparsed_tweet = match unparsed_tweet.get("itemContent")
-    .and_then(|v| v.get("tweet_results"))
+  let unparsed_tweet = match unparsed_tweet.get("tweet_results")
     .and_then(|v| v.get("result")) {
     // if normal tweet
     Some(unparsed_tweet) => {
-      // if tweet is unable to be viewed (e.g. "You’re unable to view this Tweet 
-      // because this account owner limits who can view their Tweets. Learn more"), 
-      // unparsed_tweet["legacy"] will equal null, but we still want to tell the 
-      // user this tweet is missing, so we must create our own tweet
-      if unparsed_tweet["legacy"].is_null() {
-        // FIXME: it is possible this will not give the desirable behavior if 
-        // the non-viewable tweet is a deleted tweet, and is from the same 
-        // user as the main tweet (while this is the first tweet in the 
-        // thread), thus the user match check will assume it is not the same 
-        // user, and not add ANY of the thread tweets, but we still want the 
-        // thread tweets
-        // perhaps i just need to check the next tweet if first tweet checked 
-        // has user="hidden"
-        return Some(Tweet {
-          id: "".to_string(),
-          user: "hidden".to_string(),
-          text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
-          media: None, urls: None, quote: None, thread_id: None, extra: None,
-        })
+      let kind = item_type(unparsed_tweet);
+      match kind.as_str() {
+        // normal visible tweet
+        "Tweet" => unparsed_tweet,
+        // idk why this happens, but the example is in `url_test_text_only_tweets_15()`
+        // (normal-ish tweet)
+        "TweetWithVisibilityResults" => &unparsed_tweet["tweet"],
+        "TweetTombstone" => {
+          // if tweet is unable to be viewed (e.g. "You’re unable to view this Tweet 
+          // because this account owner limits who can view their Tweets. Learn more"), 
+          // unparsed_tweet["legacy"] will equal null, but we still want to tell the 
+          // user this tweet is missing, so we must create our own tweet
+          //
+          // FIXME: it is possible this will not give the desirable behavior if 
+          // the non-viewable tweet is a deleted tweet, and is from the same 
+          // user as the main tweet (while this is the first tweet in the 
+          // thread), thus the user match check will assume it is not the same 
+          // user, and not add ANY of the thread tweets, but we still want the 
+          // thread tweets
+          // perhaps i just need to check the next tweet if first tweet checked 
+          // has user="hidden"
+          return Some(Tweet {
+            id: "".to_string(),
+            user: "hidden".to_string(),
+            text: format!("<<< {} >>>", unparsed_tweet["tombstone"]["text"]["text"].as_str().unwrap()),
+            media: None, urls: None, quote: None, thread_id: None, extra: None,
+          })
+        },
+        _ => panic!("idk what type this is: {kind}"),
       }
-      // if above if-statement failed to trigger, the tweet is visible so we can parse it
-      unparsed_tweet
     },
     // if quoted tweet OR "Show more" button
     None => match unparsed_tweet.get("result") {
@@ -234,11 +231,9 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
       None => {
         // if its a "show more" item, add as special last tweet (to signal we need 
         // a new request at the cursor position), then break
-        if unparsed_tweet.get("itemContent")
-        .and_then(|v| v.get("displayTreatment"))
-        .and_then(|v| v.get("actionText"))
-        .and_then(|v| v.as_str()).unwrap_or("fail") == "Show replies" {
-          let show_more_cursor = unparsed_tweet["itemContent"]["value"].as_str().unwrap().to_string();
+        let kind = item_type(unparsed_tweet);
+        if kind == "TimelineTimelineCursor".to_string() {
+          let show_more_cursor = unparsed_tweet["value"].as_str().unwrap().to_string();
           return Some(Tweet {
             id: "more_tweets_in_thread".to_string(),
             user: "".to_string(),
@@ -271,6 +266,20 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
     None => None,
   };
   return Some(Tweet { id, user, text, media, urls, quote, thread_id: None, extra: None })
+}
+
+/// get the type of item in twitter raw json
+/// 
+/// note: this will be unable to find a type of a quoted tweet
+fn item_type(item: &Value) -> String {
+  match item["entryType"].as_str()
+  .or(item["itemType"].as_str())
+  // it seems typename is not returned from my requests, but does in 
+  // webinspector so i prob have some header option turned off
+  .or(item["__typename"].as_str()) {
+    Some(v) => v,
+    None => panic!("can't find type:\n{item}"),
+  }.to_string()
 }
 
 /* ----------------------- url_to_recommended_tweets ----------------------- */
