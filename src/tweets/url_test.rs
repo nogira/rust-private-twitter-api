@@ -149,6 +149,14 @@ async fn url_test_text_only_tweets_15() {
   assert_eq!(tweets.len(), 6);
 }
 
+#[tokio::test]
+async fn url_test_text_only_tweets_16() {
+  println!("url_to_tweets()  //  thread, 1st-tweet, fails bc \"TweetWithVisibilityResults\" in quote");
+  let url = "https://www.twitter.com/balajis/status/1591040299056660480";
+  let tweets = url_to_tweets(url).await;
+  assert_eq!(tweets.len(), 2);
+}
+
 /* -------------------------------recommended------------------------------- */
 
 #[tokio::test]

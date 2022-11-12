@@ -13,7 +13,9 @@ static GUEST_TOKEN: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new())
 /// get "x-guest-token" for subsequent requests
 pub async fn new_guest_token() -> String {
   let url = "https://api.twitter.com/1.1/guest/activate.json";
-  let client = reqwest::Client::new();
+  let client = reqwest::Client::builder()
+    .gzip(true).deflate(true).brotli(true)
+    .build().unwrap();
   let text = client.post(url)
     .header("authorization", AUTHORIZATION)
     .send().await.unwrap()

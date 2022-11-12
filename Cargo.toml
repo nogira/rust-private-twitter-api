@@ -7,7 +7,7 @@ rust-version = "1.63"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { version = "0.11.11", default-features = false, features = ["native-tls"] }
+reqwest = { version = "0.11.11", default-features = false, features = ["native-tls", "gzip", "deflate", "brotli"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 once_cell = { version = "1.13.0", default-features = false }
 tokio = { version = "1.20.1", default-features = false, features = ["macros"] }

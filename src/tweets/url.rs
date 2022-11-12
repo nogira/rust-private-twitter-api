@@ -7,8 +7,6 @@ use crate::{
   tweets::parsing::{parse_urls, parse_media},
 };
 
-// TODO: may be able to simplify some of this stuff with `["__typename"].as_str()` ???
-
 pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
   let tweet_id = url.split("/").collect::<Vec<&str>>()[5];
   let mut tweets = url_to_tweets_no_cursor_position(tweet_id).await;
@@ -176,15 +174,19 @@ fn tweet_group_to_tweets(tweet_group: &Vec<Value>) -> Vec<Tweet> {
 
 /// convert a single tweet object to a `Tweet`
 fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
-  let unparsed_tweet = match unparsed_tweet.get("tweet_results")
-    .and_then(|v| v.get("result")) {
-    // if normal tweet
+  let unparsed_tweet = match unparsed_tweet
+  // normal tweet
+  .get("tweet_results").and_then(|v| v.get("result"))
+  // quote tweet
+  .or(unparsed_tweet.get("result")) {
+    // if tweet
     Some(unparsed_tweet) => {
       let kind = item_type(unparsed_tweet);
       match kind.as_str() {
         // normal visible tweet
         "Tweet" => unparsed_tweet,
         // idk why this happens, but the example is in `url_test_text_only_tweets_15()`
+        // and `url_test_text_only_tweets_16()`
         // (normal-ish tweet)
         "TweetWithVisibilityResults" => &unparsed_tweet["tweet"],
         "TweetTombstone" => {
@@ -206,36 +208,24 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
         _ => panic!("idk what type this is: {kind}"),
       }
     },
-    // if quoted tweet OR "Show more" button
-    None => match unparsed_tweet.get("result") {
-      // if quoted tweet
-      Some(unparsed_tweet) => {
-        // if quoted tweet is deleted / not viewable
-        if unparsed_tweet["legacy"].is_null() {
-          return create_missing_tweet(unparsed_tweet);
-        }
-        unparsed_tweet
-      },
-      // if the tweet_item is a "Show more" button, it has no `result` attr, so 
-      // `None` is returned
-      None => {
-        // if its a "show more" item, add as special last tweet (to signal we need 
-        // a new request at the cursor position), then break
-        let kind = item_type(unparsed_tweet);
-        if kind == "TimelineTimelineCursor".to_string() {
-          let show_more_cursor = unparsed_tweet["value"].as_str().unwrap().to_string();
-          return Some(Tweet {
-            id: "more_tweets_in_thread".to_string(),
-            user: "".to_string(),
-            text: show_more_cursor, 
-            media: None, urls: None, quote: None, thread_id: None, extra: None
-          });
-        } else {
-          // FIXME: does this ever trigger??? (since i unwrap all 
-          // `Option<Tweet>`s, i should find out soon enough)
-          return None;
-        }
-      },
+    // if "Show more" button
+    None =>  {
+      // if its a "show more" item, add as special last tweet (to signal we need 
+      // a new request at the cursor position), then break
+      let kind = item_type(unparsed_tweet);
+      if kind == "TimelineTimelineCursor".to_string() {
+        let show_more_cursor = unparsed_tweet["value"].as_str().unwrap().to_string();
+        return Some(Tweet {
+          id: "more_tweets_in_thread".to_string(),
+          user: "".to_string(),
+          text: show_more_cursor, 
+          media: None, urls: None, quote: None, thread_id: None, extra: None
+        });
+      } else {
+        // FIXME: does this ever trigger??? (since i unwrap all 
+        // `Option<Tweet>`s, i should find out soon enough)
+        return None;
+      }
     },
   };
   let id = unparsed_tweet["legacy"]["id_str"].as_str().unwrap().to_string();
