@@ -2,12 +2,6 @@ use super::query::{query_to_tweets, query_to_query_users};
 
 #[tokio::test]
 async fn query_test_1() {
-
-  // NOTE: this can fail if user quote tweets themself, giving an extra entry 
-  // in `tweets`, but this is the desired behavior
-  // FIXME: well, the temp desired behavior. if twitter can parse it correctly, 
-  // so should i. need to differentiate between "tweet + immediately quote tweeting it" and "quote tweeting old tweet"
-
   println!("query_to_tweets()  //  query that gets tweets");
   let query = "from:balajis -filter:replies";
   let tweets = query_to_tweets(&query).await;

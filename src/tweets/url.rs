@@ -235,12 +235,7 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
   let urls = parse_urls(&unparsed_tweet["legacy"]);
   let quote = match unparsed_tweet.get("quoted_status_result") {
     Some(quote_contents) => match parse_tweet_contents(quote_contents) {
-      Some(tweet) => Some(Box::new(Tweet {
-        id: tweet.id,      user: tweet.user,
-        text: tweet.text,  media: tweet.media,
-        urls: tweet.urls,  thread_id: tweet.thread_id,
-        quote: None,       extra: None,
-      })),
+      Some(tweet) => Some(Box::new(tweet)),
       None => None,
     },
     None => None,
