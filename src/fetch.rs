@@ -72,11 +72,11 @@ pub async fn query_fetch(query: &str) -> Value {
     ("include_want_retweets", "0"), // 1 = include "want_retweets" attribute in each user object
     ("include_mute_edge", "0"), // 1 = include "muting" attribute in each user object
     ("include_can_dm", "0"), // 1 = include "can_dm" attribute in each user object
-    ("include_can_media_tag", "1"), // 🚨🚨🚨 effect unclear
+    ("include_can_media_tag", "0"), // 🚨🚨🚨 effect unclear
     ("include_ext_has_nft_avatar", "0"), // 1 = include "ext_has_nft_avatar" attribute in each user object
-    ("skip_status", "1"), // 🚨🚨🚨 effect unclear
+    ("skip_status", "0"), // 🚨🚨🚨 effect unclear
     ("cards_platform", "Web-12"), // 🚨🚨🚨 effect unclear (unsure how to edit "Web-12", but commenting out does nothing)
-    ("include_cards", "1"), // 🚨🚨🚨 effect unclear
+    ("include_cards", "0"), // 🚨🚨🚨 effect unclear
     ("include_ext_alt_text", "false"), // true = include "ext_alt_text" in tweet objects, and "profile_image_extensions_alt_text" and "profile_banner_extensions_alt_text" in user objects
     ("include_quote_count", "false"), // true = include "quote_count" in tweet objects (num times the tweet has been quote tweeted)
     ("include_reply_count", "0"), // 1 = include "reply_count" in tweet objects (num times the tweet has been replied to)
@@ -97,8 +97,8 @@ pub async fn query_fetch(query: &str) -> Value {
     ("tweet_search_mode", "live"),
     ("count", "20"),
     ("query_source", "typed_query"),
-    ("pc", "1"), // 🚨🚨🚨 effect unclear (what does pc stand for ??? politically correct??)
-    ("spelling_corrections", "1"), // 🚨🚨🚨 effect unclear
+    ("pc", "0"), // 🚨🚨🚨 effect unclear (what does pc stand for ??? politically correct??)
+    ("spelling_corrections", "0"), // 🚨🚨🚨 effect unclear
     // if "ext" = "", "ext" attr is removed from tweet objects, and "extended_entities"
     // media objects from tweet objects, and "profile_image_extensions" and 
     // "ext" from user objects
