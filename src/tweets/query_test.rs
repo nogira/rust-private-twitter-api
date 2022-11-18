@@ -66,8 +66,8 @@ async fn query_test_misinfo() {
   let query = "from:Babygravy9";
   let tweets = query_to_tweets(&query).await;
   // println!("{:?}", &tweets);
-  println!("MISINFO LEN: {:?}", tweets.len());
-  // assert_eq!(tweets.len(), 1);
+  // println!("MISINFO LEN: {:?}", tweets.len());
+  assert_eq!(tweets.len(), 20);
 }
 
 #[tokio::test]
@@ -75,9 +75,9 @@ async fn query_test_threads() {
   println!("query_to_tweets()  //  query that gets threads");
   let query = "from:balajis -filter:replies min_faves:500";
   let tweets = query_to_tweets(&query).await;
-  // println!("{:?}", &tweets[0]);
+  println!("{:?}", &tweets[0]);
   // println!("NUM TWEETS: {:?}", tweets.len());
-  // assert_eq!(tweets.len(), 1);
+  assert_eq!(tweets.len(), 20);
 }
 
 #[test]
@@ -85,3 +85,14 @@ fn query_test_parse() {
   let query = "from:elon + (from:wooo) + from:end";
   assert!(vec!["elon".to_string(), "wooo".to_string(), "end".to_string()] == query_to_query_users(query));
 }
+
+// todo: delete after confirmed tinyfeed is updating
+// #[tokio::test]
+// async fn query_test_111() {
+//   println!("query_to_tweets()  //  query that gets threads");
+//   let query = "from:basileSportif -filter:replies min_faves:10";
+//   let tweets = query_to_tweets(&query).await;
+//   println!("{:?}", &tweets[0]);
+//   // println!("NUM TWEETS: {:?}", tweets.len());
+//   assert_eq!(tweets.len(), 1);
+// }
