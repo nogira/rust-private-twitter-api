@@ -23,7 +23,7 @@ pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
     tweets.pop();
 
     // get extra tweets past "show more"
-    sleep(Duration::from_millis(100)).await; // wait between requests
+    sleep(Duration::from_millis(500)).await; // wait between requests
     let show_more_tweets = url_to_tweets_with_cursor_position(tweet_id, cursor.as_str()).await;
     
     // add tweets, checking to make sure they are unique
@@ -233,14 +233,12 @@ fn parse_tweet_contents(unparsed_tweet: &Value) -> Option<Tweet> {
   let text = unparsed_tweet["legacy"]["full_text"].as_str().unwrap().to_string();
   let media = parse_media(&unparsed_tweet["legacy"]);
   let urls = parse_urls(&unparsed_tweet["legacy"]);
-  let quote = match unparsed_tweet.get("quoted_status_result") {
-    Some(quote_contents) => match parse_tweet_contents(quote_contents) {
-      Some(tweet) => Some(Box::new(tweet)),
-      None => None,
-    },
-    None => None,
-  };
-  return Some(Tweet { id, user, text, media, urls, quote, thread_id: None, extra: None })
+  let quote = unparsed_tweet.get("quoted_status_result")
+    .and_then(|quote_contents| parse_tweet_contents(quote_contents))
+    .and_then(|tweet| Some(Box::new(tweet)));
+  let thread_id = unparsed_tweet["legacy"].get("self_thread")
+    .and_then(|o| Some(o.get("id_str").unwrap().as_str().unwrap().to_string()));
+  return Some(Tweet { id, user, text, media, urls, quote, thread_id, extra: None })
 }
 
 /// get the type of item in twitter raw json

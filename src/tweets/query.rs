@@ -38,19 +38,13 @@ pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
     let text = tweet_json["full_text"].as_str().unwrap().to_string();
     let media = parse_media(tweet_json);
     let urls = parse_urls(tweet_json);
-    let thread_id = match tweet_json["self_thread"].as_object() {
-      Some(thread_id) => Some(thread_id["id_str"].as_str().unwrap().to_string()),
-      None => None,
-    };
+    let thread_id = tweet_json.get("self_thread")
+      .and_then(|o| Some(o.get("id_str").unwrap().as_str().unwrap().to_string()));
     let date = tweet_json["created_at"].as_str().unwrap().to_string();
-    let quoted_tweet_id = match tweet_json["quoted_status_id_str"].as_str() {
-      Some(quoted_tweet_id) => Some(quoted_tweet_id.to_string()),
-      None => None,
-    };
-    let retweeted_tweet_id = match tweet_json["retweeted_status_id_str"].as_str(){
-      Some(retweet_tweet_id) => Some(retweet_tweet_id.to_string()),
-      None => None,
-    };
+    let quoted_tweet_id = tweet_json.get("quoted_status_id_str")
+      .and_then(|o| o.as_str()).and_then(|s| Some(s.to_string()));
+    let retweeted_tweet_id = tweet_json.get("retweeted_status_id_str")
+      .and_then(|o| o.as_str()).and_then(|s| Some(s.to_string()));
     let faves = tweet_json["favorite_count"].as_u64().unwrap();
 
     let parsed_tweet = Tweet {
