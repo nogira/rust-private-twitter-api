@@ -161,9 +161,13 @@ async fn url_test_text_only_tweets_16() {
 
 #[tokio::test]
 async fn url_test_recommended_tweets() {
-  println!("url_to_tweets()  //  thread, 1st-tweet");
+  test_error_msg_info("url_to_recommended_tweets", "thread, 1st-tweet");
   let url = "https://twitter.com/epolynya/status/1513868637307691009";
   let tweets = url_to_recommended_tweets(url).await;
   // println!("{:?}", tweets);
   assert!(tweets.len() > 10); // should be 24, so i prob need to join cursor query
+}
+
+fn test_error_msg_info(function: &str, input_type: &str) {
+  println!("┌─━\n│ {function}()\n│  └─ {input_type}\n└─━");
 }

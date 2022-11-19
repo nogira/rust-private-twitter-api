@@ -54,14 +54,16 @@ async fn private_api_get(url: Url) -> Value {
   // check for errors
   if let Some(error) = json.get("errors") {
     let error_code = error[0]["code"].as_i64().unwrap();
-    // if authentication error (code 215), re-run the request with a new guest token
-    if error_code == 215 {
+    // error code 200: authentication token is expired
+    // error code 215: authentication token is missing(/ invalid (?))
+    // if authentication error, re-run the request with a new guest token
+    if error_code == 200 || error_code == 215 {
       guest_token = new_guest_token().await;
       *GUEST_TOKEN.lock().await = guest_token.clone();
       json = post_req(url.clone(), &guest_token).await;
     // if different error, print the error
     } else {
-      println!("twitter get request error code: {:?}", error_code)
+      println!("twitter get request error: {:?}\n  url: {}", error, url.as_str());
     }
   }
 
