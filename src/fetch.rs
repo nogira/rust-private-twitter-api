@@ -11,46 +11,44 @@ const PRIVATE_API_BASE: &str = "https://twitter.com/i/api/";
 static GUEST_TOKEN: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 
 /// get "x-guest-token" for subsequent requests
-pub async fn new_guest_token() -> String {
+pub async fn new_guest_token() -> Result<String, Box<dyn std::error::Error>> {
   let url = "https://api.twitter.com/1.1/guest/activate.json";
   let client = reqwest::Client::builder()
-    .gzip(true).deflate(true).brotli(true)
-    .build().unwrap();
+    .gzip(true).deflate(true).brotli(true).build()?;
   let text = client.post(url)
     .header("authorization", AUTHORIZATION)
-    .send().await.unwrap()
-    .text().await.unwrap();
+    .send().await?
+    .text().await?;
   let json: Value = serde_json::from_str(&text).unwrap();
   let token = json["guest_token"].as_str().unwrap().to_string();
 
-  token
+  Ok(token)
 }
 
-async fn private_api_get(url: Url) -> Value {
+async fn private_api_get(url: Url) -> Result<Value, Box<dyn std::error::Error>> {
   let mut guest_token_mutex = GUEST_TOKEN.lock().await;
   if (*guest_token_mutex).is_empty() {
-    *guest_token_mutex = new_guest_token().await;
+    *guest_token_mutex = new_guest_token().await?;
   }
   let mut guest_token = guest_token_mutex.clone();
   std::mem::drop(guest_token_mutex);
 
-  async fn post_req(url: Url, guest_token: &str) -> Value { 
+  async fn post_req(url: Url, guest_token: &str) -> Result<Value, Box<dyn std::error::Error>> { 
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.append("authorization", AUTHORIZATION.parse().unwrap());
-    headers.append("x-guest-token",  guest_token.parse().unwrap());
+    headers.append("authorization", AUTHORIZATION.parse()?);
+    headers.append("x-guest-token",  guest_token.parse()?);
 
     let client = reqwest::Client::new();
-    let req = client.get(url)
-      .headers(headers);
-    let text = req.try_clone().unwrap()
-      .send().await.unwrap()
-      .text().await.unwrap();
-    let json: Value = serde_json::from_str(&text).unwrap();
+    let text = client.get(url)
+      .headers(headers)
+      .send().await?
+      .text().await?;
+    let json: Value = serde_json::from_str(&text)?;
 
-    json
+    Ok(json)
   }
 
-  let mut json = post_req(url.clone(), &guest_token).await;
+  let mut json = post_req(url.clone(), &guest_token).await?;
   // check for errors
   if let Some(error) = json.get("errors") {
     let error_code = error[0]["code"].as_i64().unwrap();
@@ -58,20 +56,20 @@ async fn private_api_get(url: Url) -> Value {
     // error code 215: authentication token is missing(/ invalid (?))
     // if authentication error, re-run the request with a new guest token
     if error_code == 200 || error_code == 215 {
-      guest_token = new_guest_token().await;
+      guest_token = new_guest_token().await?;
       *GUEST_TOKEN.lock().await = guest_token.clone();
-      json = post_req(url.clone(), &guest_token).await;
+      json = post_req(url.clone(), &guest_token).await?;
     // if different error, print the error
     } else {
       println!("twitter get request error: {:?}\n  url: {}", error, url.as_str());
     }
   }
 
-  json
+  Ok(json)
 }
 
 /// fetch the raw json result of a twitter search query
-pub async fn query_fetch(query: &str) -> Value {
+pub async fn query_fetch(query: &str) -> Result<Value, Box<dyn std::error::Error>> {
 
   let parameters = HashMap::from([
     ("include_profile_interstitial_type", "0"), // 1 = include "profile_interstitial_type" attribute in each user object
@@ -118,14 +116,14 @@ pub async fn query_fetch(query: &str) -> Value {
   ]);
 
   let url = format!("{}{}", PRIVATE_API_BASE, "2/search/adaptive.json?");
-  let url = reqwest::Url::parse_with_params(&url, &parameters).unwrap();
+  let url = reqwest::Url::parse_with_params(&url, &parameters)?;
 
-  let json = private_api_get(url).await;
+  let json = private_api_get(url).await?;
 
-  json
+  Ok(json)
 }
 
-pub async fn id_fetch(tweet_id: &str, cursor: &str, include_recommended_tweets: bool) -> Option<Value> {
+pub async fn id_fetch(tweet_id: &str, cursor: &str, include_recommended_tweets: bool) -> Result<Value, Box<dyn std::error::Error>> {
   let with_rux_injections = match include_recommended_tweets {
     true => "true",
     false => "false",
@@ -158,13 +156,13 @@ pub async fn id_fetch(tweet_id: &str, cursor: &str, include_recommended_tweets: 
     ("standardized_nudges_misinfo", "false"),
   ]);
   let parameters = HashMap::from([
-    ("variables", serde_json::to_string(&variables).unwrap()),
-    ("features", serde_json::to_string(&features).unwrap()),
+    ("variables", serde_json::to_string(&variables)?),
+    ("features", serde_json::to_string(&features)?),
   ]);                                                 // "L1DeQfPt7n3LtTvrBqkJ2g" is possibly the API version
   let url = format!("{}{}", PRIVATE_API_BASE, "graphql/L1DeQfPt7n3LtTvrBqkJ2g/TweetDetail?");
-  let url = reqwest::Url::parse_with_params(&url, &parameters).unwrap();
+  let url = reqwest::Url::parse_with_params(&url, &parameters)?;
 
-  let tweets_json = private_api_get(url).await
+  let tweets_json = private_api_get(url).await?
     .get("data")
     .and_then(|v| v.get("threaded_conversation_with_injections_v2"))
     .and_then(|v| v.get("instructions"))
@@ -179,7 +177,7 @@ pub async fn id_fetch(tweet_id: &str, cursor: &str, include_recommended_tweets: 
       }
   }).unwrap().clone();
 
-  Some(tweets_json)
+  Ok(tweets_json)
 }
 
 // ----------------------------all (?) graphql APIs----------------------------

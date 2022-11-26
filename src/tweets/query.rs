@@ -6,14 +6,14 @@ use super::parsing::{parse_urls, parse_media};
 use std::collections::HashMap;
 
 /// get tweets from twitter search query
-pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
+pub async fn query_to_tweets(query: &str) -> Result<Vec<Tweet>, Box<dyn std::error::Error>> {
   // key is the tweet item id, val is (tweet, quoted_tweet_id, retweeted_tweet_id)
   // quoted_tweet_id = the id of the tweet being quoted (to be able match quote 
   //   tweets to the quoted tweet)
   // retweeted_tweet_id = the id of the tweet being retweeted
   let mut parsed_tweets_map: HashMap<String, (Tweet, Option<String>, Option<String>)> = HashMap::new();
 
-  let fetch_json = query_fetch(query).await;
+  let fetch_json = query_fetch(query).await?;
   
   // data is separated into users and tweets, so to attach username to tweet, 
   // need to get user info first
@@ -21,7 +21,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
   /* -------------------------------- users -------------------------------- */
   let users_json = match fetch_json["globalObjects"]["users"].as_object() {
     Some(users) => users,
-    None => return Vec::new(),
+    None => return Ok(Vec::new()),
   };
   let mut user_id_to_name_map: HashMap<&str, &str> = HashMap::new();
   for (_, user_json) in users_json {
@@ -128,7 +128,7 @@ pub async fn query_to_tweets(query: &str) -> Vec<Tweet> {
       tweet_item
     }).collect();
 
-  parsed_tweets
+  Ok(parsed_tweets)
 }
 
 /// extract the usernames from the search query

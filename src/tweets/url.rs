@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, error::Error};
 use serde_json::Value;
 use tokio::time::{sleep, Duration};
 use crate::{
@@ -7,9 +7,9 @@ use crate::{
   tweets::parsing::{parse_urls, parse_media},
 };
 
-pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
+pub async fn url_to_tweets(url: &str) -> Result<Vec<Tweet>, Box<dyn Error>> {
   let tweet_id = url.split("/").collect::<Vec<&str>>()[5];
-  let mut tweets = url_to_tweets_no_cursor_position(tweet_id).await;
+  let mut tweets = url_to_tweets_no_cursor_position(tweet_id).await?;
 
   // if tweet thread has not finished, change cursor position to get next 
   // tweets. loop until have all tweets
@@ -24,7 +24,7 @@ pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
 
     // get extra tweets past "show more"
     sleep(Duration::from_millis(500)).await; // wait between requests
-    let show_more_tweets = url_to_tweets_with_cursor_position(tweet_id, cursor.as_str()).await;
+    let show_more_tweets = url_to_tweets_with_cursor_position(tweet_id, cursor.as_str()).await?;
     
     // add tweets, checking to make sure they are unique
     let existing_tweet_ids = tweets.iter()
@@ -38,13 +38,14 @@ pub async fn url_to_tweets(url: &str) -> Vec<Tweet> {
     // get last tweet so while loop can check if it is a "show_more"
     last_tweet = &tweets[tweets.len() -1];
   }
-  tweets
+  Ok(tweets)
 }
 
-async fn url_to_tweets_with_cursor_position(tweet_id: &str, cursor: &str) -> Vec<Tweet> {
-  let tweet_groups_json = id_fetch(tweet_id, cursor, false).await.unwrap();
+async fn url_to_tweets_with_cursor_position(tweet_id: &str, cursor: &str
+) -> Result<Vec<Tweet>, Box<dyn Error>> {
+  let tweet_groups_json = id_fetch(tweet_id, cursor, false).await?;
   let tweet_group = tweet_groups_json.as_array().unwrap();
-  tweet_group_to_tweets(&tweet_group)
+  Ok(tweet_group_to_tweets(&tweet_group))
 }
 
 /// get a tweet/tweet-thread in a parsed format (most of the junk removed), as a
@@ -52,9 +53,10 @@ async fn url_to_tweets_with_cursor_position(tweet_id: &str, cursor: &str) -> Vec
 /// 
 /// if more information is required than in the struct `Tweet`, use id_fetch()` 
 /// instead
-async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
+async fn url_to_tweets_no_cursor_position(tweet_id: &str
+) -> Result<Vec<Tweet>, Box<dyn Error>> {
   let tweet_groups_json = id_fetch(
-    tweet_id, "", false).await.unwrap();
+    tweet_id, "", false).await?;
   let tweet_groups = tweet_groups_json.as_array().unwrap();
 
   // find out which tweet group contains the main tweet
@@ -107,7 +109,7 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
     if next_group_tweets.len() > 0 && next_group_tweets[0].user == main_group_tweets[0].user {
       main_group_tweets.append(&mut next_group_tweets);
     }
-    return main_group_tweets;
+    return Ok(main_group_tweets);
   }
 
   /* ---------------IF MAIN TWEET **NOT** IN FIRST TWEET GROUP--------------- */
@@ -124,7 +126,7 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
   // if prev tweet group is same user, it is mid/end of tweet thread, so just 
   // return main tweet group (which is a single tweet)
   if prev_tweet_is_same_user {
-    return main_group_tweets;
+    return Ok(main_group_tweets);
 
   // if prev tweet group is diff user, its first tweet of a reply
   } else {
@@ -133,7 +135,7 @@ async fn url_to_tweets_no_cursor_position(tweet_id: &str) -> Vec<Tweet> {
     && next_group_tweets[0].user == main_group_tweets[0].user {
       main_group_tweets.append(&mut next_group_tweets);
     }
-    return main_group_tweets;
+    return Ok(main_group_tweets);
   }
 }
 
@@ -268,10 +270,10 @@ fn create_missing_tweet(unparsed_tweet: &Value) -> Option<Tweet> {
 
 /* ----------------------- url_to_recommended_tweets ----------------------- */
 
-pub async fn url_to_recommended_tweets(url: &str) -> Vec<Tweet> {
+pub async fn url_to_recommended_tweets(url: &str) -> Result<Vec<Tweet>, Box<dyn Error>> {
   let id_from_input_url = url.split("/").collect::<Vec<&str>>()[5];
   let tweet_groups_json = id_fetch(&id_from_input_url, 
-    "", true).await.unwrap();
+    "", true).await?;
   let tweet_groups = tweet_groups_json.as_array().unwrap();
 
   // all recommended tweets are in second-last tweet_group item
@@ -279,5 +281,5 @@ pub async fn url_to_recommended_tweets(url: &str) -> Vec<Tweet> {
     .get("content").and_then(|v| v.get("items"))
     .and_then(|v| v.as_array()).unwrap();
   
-  tweet_group_to_tweets(recommended_tweets)
+  Ok(tweet_group_to_tweets(recommended_tweets))
 }
