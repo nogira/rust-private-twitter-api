@@ -23,7 +23,7 @@ pub async fn url_to_tweets(url: &str) -> Result<Vec<Tweet>, Box<dyn Error>> {
     tweets.pop();
 
     // get extra tweets past "show more"
-    sleep(Duration::from_millis(500)).await; // wait between requests
+    sleep(Duration::from_millis(200)).await; // wait between requests
     let show_more_tweets = url_to_tweets_with_cursor_position(tweet_id, cursor.as_str()).await?;
     
     // add tweets, checking to make sure they are unique
