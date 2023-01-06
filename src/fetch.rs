@@ -1,7 +1,7 @@
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
 use reqwest::Url;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 const AUTHORIZATION: &str = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
@@ -124,37 +124,34 @@ pub async fn query_fetch(query: &str) -> Result<Value, Box<dyn std::error::Error
 }
 
 pub async fn id_fetch(tweet_id: &str, cursor: &str, include_recommended_tweets: bool) -> Result<Value, Box<dyn std::error::Error>> {
-  let with_rux_injections = match include_recommended_tweets {
-    true => "true",
-    false => "false",
-  };
-  let mut variables = HashMap::from([
-    ("focalTweetId", tweet_id),
-    ("with_rux_injections", with_rux_injections), // true = include recommended tweets
-    ("includePromotedContent", "false"), // true = include promoted tweets (ads)
-    ("withCommunity", "true"), // 🚨🚨🚨🚨🚨 idk???? could be related to promoted content or rux injections
-    ("withQuickPromoteEligibilityTweetFields", "false"), // 🚨🚨🚨🚨🚨 idk???? could be related to promoted content or rux injections
-    ("withBirdwatchNotes", "false"), // true = add "has_birdwatch_notes" key (val is bool) to tweet_results.result
-    ("withSuperFollowsUserFields", "false"), // true = add "super_follow_eligible", "super_followed_by", and "super_following" keys (vals are bool) to user_results.result
-    ("withDownvotePerspective", "false"), // 🚨🚨🚨🚨🚨 ACCESS DENIED for true RN, but prob num of downvotes
-    ("withReactionsMetadata", "false"), // 🚨🚨🚨🚨🚨 ACCESS DENIED for true RN
-    ("withReactionsPerspective", "false"), // 🚨🚨🚨🚨🚨 ACCESS DENIED for true RN
-    ("withSuperFollowsTweetFields", "false"), // 🚨🚨🚨🚨🚨 idk????
-    ("withVoice", "false"), // 🚨🚨🚨🚨🚨 idk????
-    ("withV2Timeline", "true"), // slight change to a small part of the json, but irrelevant for the most part
-    ("__fs_responsive_web_like_by_author_enabled", "false"), // true added an ad.. idk why
-    ("__fs_dont_mention_me_view_api_enabled", "false"), // true = add "unmention_info" key (val is obj, but seems to always be empty, at least on guest token) to tweet_results.result
-    ("__fs_interactive_text_enabled", "true"), // 🚨🚨🚨🚨🚨 idk????
-    ("__fs_responsive_web_uc_gql_enabled", "false"), // 🚨🚨🚨🚨🚨 idk????
-    ("__fs_responsive_web_edit_tweet_api_enabled", "false"), // 🚨🚨🚨🚨🚨 idk????
-  ]);
+  let mut variables: Value = json!({
+    "focalTweetId": tweet_id,
+    "with_rux_injections": include_recommended_tweets, // true = include recommended tweets
+    "includePromotedContent": false, // true = include promoted tweets (ads)
+    "withCommunity": true, // 🚨🚨🚨🚨🚨 idk???? could be related to promoted content or rux injections
+    "withQuickPromoteEligibilityTweetFields": false, // 🚨🚨🚨🚨🚨 idk???? could be related to promoted content or rux injections
+    "withBirdwatchNotes": false, // true = add "has_birdwatch_notes" key (val is bool) to tweet_results.result
+    "withSuperFollowsUserFields": false, // true = add "super_follow_eligible", "super_followed_by", and "super_following" keys (vals are bool) to user_results.result
+    "withDownvotePerspective": false, // 🚨🚨🚨🚨🚨 ACCESS DENIED for true RN, but prob num of downvotes
+    "withReactionsMetadata": false, // 🚨🚨🚨🚨🚨 ACCESS DENIED for true RN
+    "withReactionsPerspective": false, // 🚨🚨🚨🚨🚨 ACCESS DENIED for true RN
+    "withSuperFollowsTweetFields": false, // 🚨🚨🚨🚨🚨 idk????
+    "withVoice": false, // 🚨🚨🚨🚨🚨 idk????
+    "withV2Timeline": true, // slight change to a small part of the json, but irrelevant for the most part
+    "__fs_responsive_web_like_by_author_enabled": false, // true added an ad.. idk why
+    "__fs_dont_mention_me_view_api_enabled": false, // true = add "unmention_info" key (val is obj, but seems to always be empty, at least on guest token) to tweet_results.result
+    "__fs_interactive_text_enabled": true, // 🚨🚨🚨🚨🚨 idk????
+    "__fs_responsive_web_uc_gql_enabled": false, // 🚨🚨🚨🚨🚨 idk????
+    "__fs_responsive_web_edit_tweet_api_enabled": false, // 🚨🚨🚨🚨🚨 idk????
+  });
+  
   // add cursor variable if present
   if cursor != "" {
-    variables.insert("cursor", cursor);
+    variables["cursor"] = json!(cursor);
   }
-  let features = HashMap::from([
-    ("standardized_nudges_misinfo", "false"),
-  ]);
+  let features = json!({
+    "standardized_nudges_misinfo": false
+  });
   let parameters = HashMap::from([
     ("variables", serde_json::to_string(&variables)?),
     ("features", serde_json::to_string(&features)?),
