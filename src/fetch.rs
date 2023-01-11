@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 const AUTHORIZATION: &str = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
-const PRIVATE_API_BASE: &str = "https://twitter.com/i/api/";
+const PRIVATE_API_BASE: &str = "https://api.twitter.com/";
 
 // TODO: token is a string of numbers, so better to store as integer (?)
 static GUEST_TOKEN: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
@@ -81,13 +81,17 @@ pub async fn query_fetch(query: &str) -> Result<Value, Box<dyn std::error::Error
     ("include_can_dm", "0"), // 1 = include "can_dm" attribute in each user object
     ("include_can_media_tag", "0"), // 🚨🚨🚨 effect unclear
     ("include_ext_has_nft_avatar", "0"), // 1 = include "ext_has_nft_avatar" attribute in each user object
+    ("include_ext_is_blue_verified", "1"),
+    ("include_ext_verified_type", "1"),
     ("skip_status", "0"), // 🚨🚨🚨 effect unclear
     ("cards_platform", "Web-12"), // 🚨🚨🚨 effect unclear (unsure how to edit "Web-12", but commenting out does nothing)
     ("include_cards", "0"), // 🚨🚨🚨 effect unclear
     ("include_ext_alt_text", "false"), // true = include "ext_alt_text" in tweet objects, and "profile_image_extensions_alt_text" and "profile_banner_extensions_alt_text" in user objects
+    ("include_ext_limited_action_results", "false"),
     ("include_quote_count", "false"), // true = include "quote_count" in tweet objects (num times the tweet has been quote tweeted)
     ("include_reply_count", "0"), // 1 = include "reply_count" in tweet objects (num times the tweet has been replied to)
     ("tweet_mode", "extended"),
+    ("include_ext_collab_control", "true"),
     // need this on bc "entities" stores all url conversions, while "extended_entities" 
     // only stores url to do with images and videos
     ("include_entities", "true"), // true = include "entities" object in tweet objects ("entities_extended" is still included if this is false)
@@ -101,18 +105,18 @@ pub async fn query_fetch(query: &str) -> Result<Value, Box<dyn std::error::Error
     ("send_error_codes", "false"), // 🚨🚨🚨 effect unclear
     ("simple_quoted_tweet", "true"), // true seems to remove the url of the quoted tweet from the quote tweet
     ("q", query),
-    ("tweet_search_mode", "live"),
     ("count", "20"),
     ("query_source", "typed_query"),
     ("pc", "0"), // 🚨🚨🚨 effect unclear (what does pc stand for ??? politically correct??)
     ("spelling_corrections", "0"), // 🚨🚨🚨 effect unclear
+    ("include_ext_edit_control", "true"),
     // if "ext" = "", "ext" attr is removed from tweet objects, and "extended_entities"
     // media objects from tweet objects, and "profile_image_extensions" and 
     // "ext" from user objects
     // if you instead use the string of a list of names, each name is an 
     // attribute within an "ext" object e.g.
     // `"ext": { "mediaStats": { "r": { "missing": null }, "ttl": -1 }`
-    ("ext", "") //"mediaStats,highlightedLabel,hasNftAvatar,voiceInfo,enrichments,superFollowMetadata,unmentionInfo"),
+    ("ext", "") //"mediaStats,highlightedLabel,hasNftAvatar,voiceInfo,enrichments,superFollowMetadata,unmentionInfo,editControl,collab_control,vibe"),
   ]);
 
   let url = format!("{}{}", PRIVATE_API_BASE, "2/search/adaptive.json?");

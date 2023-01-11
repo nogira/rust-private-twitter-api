@@ -70,8 +70,8 @@ pub async fn query_to_tweets(query: &str) -> Result<Vec<Tweet>, Box<dyn std::err
     ["addEntries"]["entries"].as_array().unwrap().into_iter()
     .filter_map(|item| {
       let id = item["entryId"].as_str().unwrap();
-      match id.len() == 26 {
-        true => Some((&id[7..]).to_string()),
+      match id.starts_with("tweet-") {
+        true => Some((&id[6..]).to_string()),
         false => None,
       }
     }).collect::<Vec<String>>();
